@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yado — mobile hotel booking for Japan (EN / JA)
 
-## Getting Started
+Mobile-first hotel booking site built with Next.js 16 (App Router), React 19, Tailwind CSS 4, TypeScript, Drizzle ORM on SQLite, and Stripe.
 
-First, run the development server:
+## Quick start
 
 ```bash
+npm install
+cp .env.example .env.local      # then edit (see "Configuration")
+npm run seed                    # creates the head admin, a demo partner, 8 demo hotels with reviews
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Public site: http://localhost:3000 (redirects to `/en` or `/ja` from your browser language)
+- Admin: http://localhost:3000/admin — sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env.local` (defaults: `admin@example.com` / `change-me-now`). **Change the password after the first login** via "Forgot your password?".
+- Demo partner: `partner@example.com` / `partner-demo-1234` at `/ja/partner/login`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Everything works with no external services configured ("demo mode"): payments are simulated, emails are stored in the admin **Emails** page instead of being sent (open sign-in / verification links from there), and translation is skipped.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## What's in it
 
-## Learn More
+| Area | Routes | Notes |
+| --- | --- | --- |
+| Guest site | `/[locale]`, `/search`, `/hotels/[slug]`, `/book`, `/confirmation`, `/bookings`, `/login` | Search by city, station or name; sort by price, rating, room size; Google Maps link; verified-guest reviews |
+| Guest login | `/login` → emailed magic link | No passwords. The verified email is the identity; `/bookings` shows every booking under it |
+| Partner portal | `/[locale]/partner/register`, `/login`, `/reset`, `/partner`, `/partner/listing`, `/partner/bookings` | Register in Japanese → confirm email → admin review → pay annual fee → live. English copy is auto-translated |
+| Admin | `/admin` | Weekly dashboard + server capacity, registrations queue, hotels, bookings (cancel/refund), reviews (hide), users (disable), email outbox, audit log |
+| Payments | Stripe Checkout | Guests: one-off payment in JPY. Partners: yearly subscription. Webhook: `/api/stripe/webhook` |
 
-To learn more about Next.js, take a look at the following resources:
+### Flow: hotel registration
+1. Partner fills the form in Japanese at `/ja/partner/register` (account + property + rooms; licence number required).
+2. Server translates the listing to English (Claude API) and stores it as `translation: machine`; if translation isn't configured the Japanese text is copied and flagged `pending`.
+3. Confirmation email → link verifies the address and signs the partner in.
+4. Head admin approves or rejects (with a note) in `/admin/registrations`.
+5. Partner pays the annual fee (`PARTNER_ANNUAL_FEE_JPY`, default ¥30,000) → listing is live while `paidUntil` is in the future. Renewals extend it via the `invoice.paid` webhook.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Flow: guest booking
+1. Guest picks a room; availability = room `quantity` minus overlapping confirmed/pending bookings.
+2. Booking is created as `pending_payment`, guest is sent to Stripe Checkout (30-minute expiry).
+3. `checkout.session.completed` webhook (or the confirmation page's fallback check) marks it `confirmed`, emails guest and hotel.
+4. Unpaid bookings older than 2 hours are cancelled automatically so the room frees up.
+5. After check-out the guest can post one review per booking from `/bookings`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Configuration (`.env.local`)
 
-## Deploy on Vercel
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_PATH` | SQLite file (default `./data/yado.db`). Migrations in `drizzle/` run automatically on startup. |
+| `APP_URL` | Public origin used in emails and Stripe redirect URLs |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Head admin created by `npm run seed` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Enable real payments. Local testing: `stripe listen --forward-to localhost:3000/api/stripe/webhook` |
+| `PARTNER_ANNUAL_FEE_JPY` | Annual partner fee (default 30000) |
+| `ANTHROPIC_API_KEY` | Enables JA→EN listing translation (model `claude-opus-5`) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Send real email through Resend; otherwise emails go to the admin outbox |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Security notes
+- Passwords hashed with scrypt; sessions are random tokens stored hashed, httpOnly + SameSite cookies, 30-day expiry.
+- Magic-link, verification and reset tokens are single-use, hashed at rest, and expire (1 h / 24 h / 2 h).
+- Login, registration and link requests are rate-limited per IP and per email (in-memory; use Redis or a proxy limiter when running several instances).
+- Registration has a honeypot field; partner accounts must verify email before signing in; nothing is public until the head admin approves.
+- Every server action re-checks the session and the caller's role; partners can only edit their own hotels.
+- Stripe webhooks are signature-verified; booking/hotel ids come from Stripe metadata that we set ourselves.
+- Admin actions are written to the audit log (`/admin/users`).
+- Payment handling is idempotent: a booking is confirmed exactly once (webhook or success-page fallback), and each fee payment source (Checkout session / invoice) extends the paid period only once, so reloads and duplicate webhooks can't add extra years.
+- Booking confirmation pages are only shown to the booker (signed-in owner, the browser that made the booking, or the matching Stripe session id).
+- Guest magic links are only issued for guest accounts; partner and admin accounts must use their password (with a reset link flow).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Code map
+- `src/db/schema.ts` — tables (users, sessions, tokens, hotels, rooms, bookings, reviews, events, server_samples, emails, audit_log)
+- `src/lib/` — `auth.ts` (sessions, tokens, rate limit), `booking-server.ts` (availability, bookings), `hotels.ts` (public queries), `reviews.ts`, `translate.ts`, `stripe.ts`, `email.ts`, `analytics.ts` (weekly stats + capacity heuristics), `i18n.ts` (all UI strings)
+- `src/actions/` — server actions: `auth.ts`, `booking.ts`, `partner.ts`, `admin.ts`, `review.ts`
+- `src/app/[locale]/` — public + partner pages; `src/app/admin/` — admin; `src/app/api/` — Stripe webhook, auth link handlers
+- `src/proxy.ts` — locale redirect, visitor id, path header for analytics
+- `src/instrumentation.ts` — minute sampler for server health, expiry of unpaid bookings
+- `scripts/seed.ts` — demo data (`npm run seed`, idempotent)
+
+## Going to production
+- Move SQLite to Postgres (Drizzle supports it; the schema needs only type tweaks) before running more than one app instance.
+- Put the app behind HTTPS; set `APP_URL` accordingly so Stripe redirects and emails use the real domain.
+- Configure Stripe live keys and the webhook endpoint; consider Stripe Connect if hotels should be paid out directly.
+- Replace picsum placeholder photos and add image upload for partners.
+- Add `hreflang` alternates and structured data for SEO.

@@ -1,26 +1,36 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-primary: #b7382a;
+  --color-primary-dark: #8f2a1f;
+  --color-primary-soft: #fbeae7;
+  --color-ink: #1c1917;
+  --color-muted: #6b6560;
+  --color-line: #e7e2dd;
+  --color-paper: #faf8f5;
+  --color-card: #ffffff;
+  --color-accent: #1f5f5b;
+  --font-sans: var(--font-inter), var(--font-noto-jp), system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
 }
+
+input[type="date"] {
+  min-height: 2.75rem;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { scrollbar-width: none; }
+
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }

@@ -1,0 +1,1 @@
+ALTER TABLE `hotels` ADD `translation` text DEFAULT 'pending' NOT NULL;

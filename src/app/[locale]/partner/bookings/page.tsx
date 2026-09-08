@@ -1,0 +1,33 @@
+import { notFound, redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { formatDate, formatPrice, getDictionary, isLocale } from "@/lib/i18n";
+import { partnerHotels } from "@/lib/partner-server";
+import { bookingsForHotels } from "@/lib/booking-server";
+
+export default async function PartnerBookings(props: PageProps<"/[locale]/partner/bookings">) {
+  const { locale } = await props.params;
+  if (!isLocale(locale)) notFound();
+  const dict = getDictionary(locale);
+  const user = await getCurrentUser();
+  if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
+  const bookings = bookingsForHotels(partnerHotels(user.id).map((h) => h.id));
+  return (
+    <div className="px-4 pt-5">
+      <h1 className="text-xl font-bold mb-4">{dict.partner.bookings}</h1>
+      {bookings.length === 0 ? <p className="text-muted text-sm">{dict.partner.noBookings}</p> : (
+        <ul className="space-y-2">
+          {bookings.map((b) => (
+            <li key={b.id} className="rounded-2xl bg-card border border-line p-3 text-sm">
+              <div className="flex justify-between"><span className="font-mono text-xs text-muted">{b.ref}</span><span className="text-xs">{dict.bookings[b.status === "pending_payment" ? "pending" : b.status]}</span></div>
+              <p className="font-semibold">{b.lastName} {b.firstName} · {b.guests}{locale === "ja" ? "名" : ""}</p>
+              <p className="text-muted">{b.room ? (locale === "ja" ? b.room.nameJa : b.room.nameEn) : ""}</p>
+              <p>{formatDate(b.checkIn, locale)} → {formatDate(b.checkOut, locale)} · {formatPrice(b.total, locale)}</p>
+              <p className="text-muted">{b.email} · {b.phone}</p>
+              {b.requests && <p className="mt-1 rounded-lg bg-paper px-2 py-1 text-xs">{b.requests}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
