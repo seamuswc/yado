@@ -19,7 +19,7 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
   const [rooms, setRooms] = useState<(RoomDraft & { key: string })[]>(() => (initial.rooms.length ? initial.rooms : [{ ...emptyRoom }]).map((r, i) => ({ ...r, key: r.id ?? `init-${i}` })));
   const P = dict.partner;
   const field = "w-full rounded-xl border border-line bg-card px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-primary/40";
-  const small = "w-full rounded-lg border border-line bg-card px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+  const small = "w-full rounded-lg border border-line bg-card px-2 py-2 text-base focus:outline-none focus:ring-2 focus:ring-primary/40";
   const label = "block text-xs font-medium text-muted mb-1";
   const showEn = mode === "edit";
 
@@ -91,7 +91,7 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
             ))}
           </div>
         </fieldset>
-        <div><label className={label} htmlFor="images">{P.images}</label><textarea id="images" name="images" rows={3} defaultValue={initial.images.join("\n")} className={`${field} font-mono text-xs`} placeholder="https://…" /><p className="text-xs text-muted mt-1">{P.imagesHint}</p></div>
+        <div><label className={label} htmlFor="images">{P.images}</label><textarea id="images" name="images" rows={3} defaultValue={initial.images.join("\n")} className={`${field} font-mono`} placeholder="https://…" /><p className="text-xs text-muted mt-1">{P.imagesHint}</p></div>
       </section>
 
       {showEn && (
@@ -117,21 +117,21 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
             {r.id && <input type="hidden" name={`rooms[${i}][id]`} value={r.id} />}
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-muted">#{i + 1}</span>
-              {rooms.length > 1 && <button type="button" onClick={() => setRooms(rooms.filter((_, j) => j !== i))} className="text-xs text-red-700">{P.removeRoom}</button>}
+              {rooms.length > 1 && <button type="button" onClick={() => setRooms(rooms.filter((_, j) => j !== i))} className="text-xs text-red-700 px-3 py-2 -mr-3 rounded-lg">{P.removeRoom}</button>}
             </div>
-            <div><label className={label}>{P.roomName}</label><input name={`rooms[${i}][nameJa]`} required defaultValue={r.nameJa} className={small} lang="ja" /></div>
-            <div><label className={label}>{P.roomDescription}</label><input name={`rooms[${i}][descriptionJa]`} defaultValue={r.descriptionJa} className={small} lang="ja" /></div>
+            <div><label className={label} htmlFor={`room-${r.key}-nameJa`}>{P.roomName}</label><input id={`room-${r.key}-nameJa`} name={`rooms[${i}][nameJa]`} required defaultValue={r.nameJa} className={small} lang="ja" /></div>
+            <div><label className={label} htmlFor={`room-${r.key}-descriptionJa`}>{P.roomDescription}</label><input id={`room-${r.key}-descriptionJa`} name={`rooms[${i}][descriptionJa]`} defaultValue={r.descriptionJa} className={small} lang="ja" /></div>
             {showEn && (
               <div className="grid grid-cols-2 gap-2">
-                <div><label className={label}>{P.roomName} (EN)</label><input name={`rooms[${i}][nameEn]`} defaultValue={r.nameEn ?? ""} className={small} /></div>
-                <div><label className={label}>{P.roomDescription} (EN)</label><input name={`rooms[${i}][descriptionEn]`} defaultValue={r.descriptionEn ?? ""} className={small} /></div>
+                <div><label className={label} htmlFor={`room-${r.key}-nameEn`}>{P.roomName} (EN)</label><input id={`room-${r.key}-nameEn`} name={`rooms[${i}][nameEn]`} defaultValue={r.nameEn ?? ""} className={small} /></div>
+                <div><label className={label} htmlFor={`room-${r.key}-descriptionEn`}>{P.roomDescription} (EN)</label><input id={`room-${r.key}-descriptionEn`} name={`rooms[${i}][descriptionEn]`} defaultValue={r.descriptionEn ?? ""} className={small} /></div>
               </div>
             )}
             <div className="grid grid-cols-4 gap-2">
-              <div><label className={label}>{P.sleeps}</label><input name={`rooms[${i}][sleeps]`} type="number" min={1} max={12} required defaultValue={r.sleeps} className={small} /></div>
-              <div><label className={label}>{P.sizeSqm}</label><input name={`rooms[${i}][sizeSqm]`} type="number" min={0} defaultValue={r.sizeSqm ?? ""} className={small} /></div>
-              <div><label className={label}>{P.quantity}</label><input name={`rooms[${i}][quantity]`} type="number" min={1} required defaultValue={r.quantity} className={small} /></div>
-              <div><label className={label}>{P.price}</label><input name={`rooms[${i}][pricePerNight]`} type="number" min={500} step={100} required defaultValue={r.pricePerNight} className={small} /></div>
+              <div><label className={label} htmlFor={`room-${r.key}-sleeps`}>{P.sleeps}</label><input id={`room-${r.key}-sleeps`} name={`rooms[${i}][sleeps]`} type="number" min={1} max={12} required defaultValue={r.sleeps} className={small} /></div>
+              <div><label className={label} htmlFor={`room-${r.key}-sizeSqm`}>{P.sizeSqm}</label><input id={`room-${r.key}-sizeSqm`} name={`rooms[${i}][sizeSqm]`} type="number" min={0} defaultValue={r.sizeSqm ?? ""} className={small} /></div>
+              <div><label className={label} htmlFor={`room-${r.key}-quantity`}>{P.quantity}</label><input id={`room-${r.key}-quantity`} name={`rooms[${i}][quantity]`} type="number" min={1} required defaultValue={r.quantity} className={small} /></div>
+              <div><label className={label} htmlFor={`room-${r.key}-pricePerNight`}>{P.price}</label><input id={`room-${r.key}-pricePerNight`} name={`rooms[${i}][pricePerNight]`} type="number" min={500} step={100} required defaultValue={r.pricePerNight} className={small} /></div>
             </div>
             <div className="flex gap-4 text-sm">
               <label className="flex items-center gap-2"><input type="checkbox" name={`rooms[${i}][breakfast]`} defaultChecked={r.breakfast} className="h-4 w-4 accent-primary" />{P.breakfast}</label>

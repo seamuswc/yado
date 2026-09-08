@@ -6,8 +6,10 @@ import StayBar from "@/components/StayBar";
 import { formatPrice, getDictionary, isLocale, nightsBetween } from "@/lib/i18n";
 import { getCity, getLiveHotel, mapsUrl, t } from "@/lib/hotels";
 import { reviewsForHotel } from "@/lib/reviews";
+import { availabilityForHotel } from "@/lib/booking-server";
 import { readStay, stayQuery } from "@/lib/stay";
 import { imgOpts } from "@/lib/images";
+import { todayIso } from "@/lib/dates";
 
 export async function generateMetadata(props: PageProps<"/[locale]/hotels/[id]">): Promise<Metadata> {
   const { locale, id } = await props.params;
@@ -29,6 +31,7 @@ export default async function HotelPage(props: PageProps<"/[locale]/hotels/[id]"
   const backQs = new URLSearchParams(stayQuery(stay));
   backQs.set("city", hotel.city);
   const reviews = reviewsForHotel(hotel.dbId, locale, 10);
+  const availability = nights > 0 ? availabilityForHotel(hotel.dbId, stay.checkIn, stay.checkOut) : new Map<string, number>();
   const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
 
   return (
@@ -60,7 +63,7 @@ export default async function HotelPage(props: PageProps<"/[locale]/hotels/[id]"
         </div>
 
         <div className="mt-4">
-          <StayBar dict={dict} stay={stay} locale={locale} />
+          <StayBar dict={dict} stay={stay} locale={locale} today={todayIso()} />
         </div>
 
         <section className="mt-6">
@@ -68,12 +71,14 @@ export default async function HotelPage(props: PageProps<"/[locale]/hotels/[id]"
           <div className="space-y-3">
             {hotel.rooms.map((room) => {
               const fits = room.sleeps >= stay.guests;
+              const left = availability.get(room.id);
+              const soldOut = left !== undefined && left < 1;
               const total = room.pricePerNight * nights;
               const p = new URLSearchParams(stayQuery(stay));
               p.set("hotel", hotel.id);
               p.set("room", room.id);
               return (
-                <article key={room.id} className={`rounded-2xl bg-card border border-line overflow-hidden ${fits ? "" : "opacity-60"}`}>
+                <article key={room.id} className={`rounded-2xl bg-card border border-line overflow-hidden ${fits && !soldOut ? "" : "opacity-60"}`}>
                   <div className="flex">
                     <div className="relative w-28 shrink-0 bg-line">
                       {room.image ? <Image src={room.image} alt={t(room.name, locale)} fill sizes="112px" className="object-cover" {...imgOpts(room.image)} /> : <div className="absolute inset-0 flex items-center justify-center text-2xl">🛏️</div>}
@@ -98,10 +103,15 @@ export default async function HotelPage(props: PageProps<"/[locale]/hotels/[id]"
                         <p className="text-xs text-muted mt-1">{dict.hotel.total}: {formatPrice(total, locale)} · {nights} {nights === 1 ? dict.hotel.night : dict.hotel.nights}</p>
                       )}
                     </div>
-                    {fits ? (
-                      <Link href={`/${locale}/book?${p}`} className="rounded-xl bg-primary text-white text-sm font-semibold px-4 py-2.5 active:bg-primary-dark">
-                        {dict.hotel.book}
-                      </Link>
+                    {soldOut ? (
+                      <span className="text-xs font-medium text-muted">{dict.hotel.soldOut}</span>
+                    ) : fits ? (
+                      <div className="text-right">
+                        <Link href={`/${locale}/book?${p}`} className="inline-block rounded-xl bg-primary text-white text-sm font-semibold px-4 py-2.5 active:bg-primary-dark">
+                          {dict.hotel.book}
+                        </Link>
+                        {left !== undefined && left <= 2 && <p className="text-[11px] text-primary mt-1">{locale === "ja" ? `残り${left}室` : `${left} ${dict.hotel.left}`}</p>}
+                      </div>
                     ) : (
                       <span className="text-xs text-muted">{dict.hotel.sleeps} {room.sleeps}</span>
                     )}

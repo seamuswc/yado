@@ -8,13 +8,14 @@ import { addDays } from "@/lib/dates";
 
 export type StayQuery = { q: string; city: string; checkIn: string; checkOut: string; guests: number };
 
-export default function SearchForm({ locale, dict, initial }: { locale: Locale; dict: Dictionary; initial: StayQuery }) {
+export default function SearchForm({ locale, dict, initial, today }: { locale: Locale; dict: Dictionary; initial: StayQuery; today: string }) {
   const router = useRouter();
   const [form, setForm] = useState<StayQuery>(initial);
   const set = <K extends keyof StayQuery>(k: K, v: StayQuery[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.checkIn < today) { set("checkIn", today); return; }
     const p = new URLSearchParams();
     if (form.q) p.set("q", form.q);
     if (form.city) p.set("city", form.city);
@@ -59,7 +60,7 @@ export default function SearchForm({ locale, dict, initial }: { locale: Locale; 
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label htmlFor="checkIn" className={label}>{dict.search.checkIn}</label>
-          <input id="checkIn" type="date" value={form.checkIn} min={initial.checkIn < form.checkIn ? undefined : initial.checkIn}
+          <input id="checkIn" type="date" value={form.checkIn} min={today}
             onChange={(e) => {
               const v = e.target.value;
               set("checkIn", v);

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { addReview, canReview } from "@/lib/reviews";
 import { track } from "@/lib/analytics";
@@ -19,7 +19,8 @@ const schemaIn = z.object({
 export async function submitReview(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const locale: Locale = isLocale(String(formData.get("locale"))) ? (formData.get("locale") as Locale) : "en";
   const d = getDictionary(locale);
-  const user = await requireUser();
+  const user = await getCurrentUser();
+  if (!user) return { error: d.auth.invalidLink };
   const parsed = schemaIn.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: d.book.required };
   const gate = canReview(parsed.data.bookingId, user.id, user.email);

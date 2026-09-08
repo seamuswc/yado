@@ -3,21 +3,39 @@ import { and, desc, eq, inArray, lt, gt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { bookingRef, newId, nowIso } from "./ids";
 import { nightsBetween } from "./i18n";
+import { addDays } from "./dates";
 
 export type BookingWithHotel = schema.Booking & { hotel: schema.Hotel; room: schema.Room | null };
 
 /** Number of this room type still free for every night in [checkIn, checkOut). */
 export function roomsAvailable(room: schema.Room, checkIn: string, checkOut: string, excludeBookingId?: string): number {
   // Overlap: existing.checkIn < new.checkOut AND existing.checkOut > new.checkIn
-  const row = db.select({ n: sql<number>`count(*)` }).from(schema.bookings).where(and(
+  const overlapping = db.select({ checkIn: schema.bookings.checkIn, checkOut: schema.bookings.checkOut }).from(schema.bookings).where(and(
     eq(schema.bookings.roomId, room.id),
     inArray(schema.bookings.status, ["confirmed", "pending_payment"]),
     lt(schema.bookings.checkIn, checkOut),
     gt(schema.bookings.checkOut, checkIn),
     excludeBookingId ? sql`${schema.bookings.id} <> ${excludeBookingId}` : undefined,
-  )).get();
-  // Approximation: counts overlapping bookings rather than per-night peaks. Conservative (never oversells).
-  return Math.max(0, room.quantity - (row?.n ?? 0));
+  )).all();
+  if (overlapping.length === 0) return room.quantity;
+  // Units free = quantity minus the busiest night of the requested stay.
+  let peak = 0;
+  for (let night = checkIn; night < checkOut; night = addDays(night, 1)) {
+    const busy = overlapping.filter((b) => b.checkIn <= night && b.checkOut > night).length;
+    if (busy > peak) peak = busy;
+  }
+  return Math.max(0, room.quantity - peak);
+}
+
+/** Units left per active room of a hotel for the given stay. */
+export function availabilityForHotel(hotelId: string, checkIn: string, checkOut: string): Map<string, number> {
+  const rooms = db.select().from(schema.rooms).where(and(eq(schema.rooms.hotelId, hotelId), eq(schema.rooms.active, true))).all();
+  return new Map(rooms.map((r) => [r.id, roomsAvailable(r, checkIn, checkOut)]));
+}
+
+export type BookingErrorCode = "notFound" | "invalidDates" | "tooManyGuests" | "notAvailable";
+export class BookingError extends Error {
+  constructor(public code: BookingErrorCode) { super(code); }
 }
 
 export type NewBooking = {
@@ -33,11 +51,11 @@ export function createBooking(input: NewBooking): schema.Booking {
 
 function createBookingTx(input: NewBooking): schema.Booking {
   const room = db.select().from(schema.rooms).where(eq(schema.rooms.id, input.roomId)).get();
-  if (!room || room.hotelId !== input.hotelId || !room.active) throw new Error("Room not found");
+  if (!room || room.hotelId !== input.hotelId || !room.active) throw new BookingError("notFound");
   const nights = nightsBetween(input.checkIn, input.checkOut);
-  if (nights < 1) throw new Error("Invalid dates");
-  if (room.sleeps < input.guests) throw new Error("Too many guests for this room");
-  if (roomsAvailable(room, input.checkIn, input.checkOut) < 1) throw new Error("Room not available for those dates");
+  if (nights < 1) throw new BookingError("invalidDates");
+  if (room.sleeps < input.guests) throw new BookingError("tooManyGuests");
+  if (roomsAvailable(room, input.checkIn, input.checkOut) < 1) throw new BookingError("notAvailable");
   const id = newId("b_");
   const ref = bookingRef();
   db.insert(schema.bookings).values({

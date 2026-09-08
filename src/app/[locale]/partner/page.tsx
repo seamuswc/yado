@@ -17,8 +17,8 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
   if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
   const sp = await props.searchParams;
   let hotels = partnerHotels(user.id);
-  if (typeof sp.session_id === "string" && hotels[0]) {
-    await reconcileFeeSession(hotels[0].id, sp.session_id);
+  if (typeof sp.session_id === "string") {
+    await reconcileFeeSession(user.id, sp.session_id);
     hotels = partnerHotels(user.id);
   }
   const P = dict.partner;
@@ -51,7 +51,10 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
               <span className={`shrink-0 text-xs rounded-full border px-2 py-0.5 ${toneClass[st.tone]}`}>{st.label}</span>
             </div>
             {h.reviewNote && (h.status === "rejected" || h.status === "suspended") && (
-              <p className="text-sm rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2"><span className="font-medium">{P.reviewNote}:</span> {h.reviewNote}</p>
+              <div className="text-sm rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2">
+                <p><span className="font-medium">{P.reviewNote}:</span> {h.reviewNote}</p>
+                {h.status === "rejected" && <p className="text-xs mt-1">{P.resubmitHint}</p>}
+              </div>
             )}
             {h.translation === "pending" && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">{P.translationPending}</p>}
             {h.paidUntil && <p className="text-sm text-muted">{P.paidUntil}: {formatDateLong(h.paidUntil, locale)}</p>}

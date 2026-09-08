@@ -20,6 +20,7 @@ const buckets = new Map<string, { count: number; resetAt: number }>();
 /** Returns true when the caller is allowed; false when the limit is exceeded. */
 export function rateLimit(key: string, max: number, windowMs: number): boolean {
   const now = Date.now();
+  if (buckets.size > 10_000) for (const [k, v] of buckets) if (v.resetAt < now) buckets.delete(k);
   const b = buckets.get(key);
   if (!b || b.resetAt < now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });
@@ -31,9 +32,12 @@ export function rateLimit(key: string, max: number, windowMs: number): boolean {
 
 export async function clientIp(): Promise<string> {
   const h = await headers();
-  // The rightmost entry is appended by the proxy in front of us; earlier entries are client-controlled.
+  // Only trust forwarded headers when a reverse proxy in front of us sets them (TRUST_PROXY=1);
+  // otherwise a client could spoof its own address and dodge per-IP limits.
+  if (process.env.TRUST_PROXY !== "1") return "direct";
+  // The rightmost entry is appended by the proxy; earlier entries are client-controlled.
   const xff = h.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
-  return xff[xff.length - 1] || h.get("x-real-ip") || "local";
+  return xff[xff.length - 1] || h.get("x-real-ip") || "direct";
 }
 
 // ---------- sessions ----------

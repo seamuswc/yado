@@ -6,7 +6,7 @@ import { newId } from "../src/lib/ids";
 import { seedHotels, seedReviews } from "./seed-data";
 import { recomputeRating } from "../src/lib/reviews";
 
-const adminEmail = process.env.ADMIN_EMAIL ?? "admin@example.com";
+const adminEmail = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
 const adminPassword = process.env.ADMIN_PASSWORD ?? "change-me-now";
 
 type Role = "head_admin" | "partner" | "guest";

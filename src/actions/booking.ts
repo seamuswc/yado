@@ -5,7 +5,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getCurrentUser, clientIp, rateLimit } from "@/lib/auth";
-import { createBooking, expireStaleBookings } from "@/lib/booking-server";
+import { BookingError, cancelPendingBooking, createBooking, expireStaleBookings } from "@/lib/booking-server";
 import { onBookingConfirmed } from "@/lib/payments";
 import { rememberBookingRef } from "@/lib/booking-access";
 import { APP_URL } from "@/lib/email";
@@ -13,15 +13,15 @@ import { getDictionary, isLocale, nightsBetween, type Locale } from "@/lib/i18n"
 import { getLiveHotel } from "@/lib/hotels";
 import { getStripe } from "@/lib/stripe";
 import { track } from "@/lib/analytics";
-import { todayIso } from "@/lib/dates";
+import { addDays, todayIso } from "@/lib/dates";
 import type { ActionState } from "./auth";
 
 const schemaIn = z.object({
   locale: z.string(),
   hotel: z.string().min(1),
   room: z.string().min(1),
-  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => addDays(s, 0) === s, "invalid date"),
+  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => addDays(s, 0) === s, "invalid date"),
   guests: z.coerce.number().int().min(1).max(8),
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().min(1).max(80),
@@ -48,7 +48,7 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
   const hotel = getLiveHotel(v.hotel);
   const room = hotel?.rooms.find((r) => r.id === v.room);
   if (!hotel || !room) return { error: d.common.error };
-  if (nightsBetween(v.checkIn, v.checkOut) < 1 || v.checkIn < todayIso()) return { error: d.common.error };
+  if (nightsBetween(v.checkIn, v.checkOut) < 1 || v.checkIn < todayIso()) return { error: d.book.errors.invalidDates };
 
   expireStaleBookings();
   const user = await getCurrentUser();
@@ -64,7 +64,9 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
       locale, paymentMode: stripe ? "stripe" : "demo",
     });
   } catch (e) {
-    return { error: (e as Error).message };
+    if (e instanceof BookingError) return { error: d.book.errors[e.code] };
+    console.error("createBooking failed", e);
+    return { error: d.common.error };
   }
   track("booking_started", { locale, meta: { hotel: hotel.id, total: booking.total } });
   await rememberBookingRef(booking.ref);
@@ -74,8 +76,11 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
     redirect(`/${locale}/confirmation?ref=${booking.ref}`);
   }
 
-  const session = await stripe.checkout.sessions.create({
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
     mode: "payment",
+    payment_method_types: ["card"], // async methods (konbini, bank transfer) would need async_payment_* handling
     customer_email: email,
     locale: locale === "ja" ? "ja" : "en",
     line_items: [{
@@ -93,7 +98,13 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
     success_url: `${APP_URL}/${locale}/confirmation?ref=${booking.ref}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${APP_URL}/${locale}/hotels/${hotel.id}?checkIn=${v.checkIn}&checkOut=${v.checkOut}&guests=${v.guests}`,
     expires_at: Math.floor(Date.now() / 1000) + 35 * 60, // Stripe minimum is 30 min, measured server-side
-  });
+    });
+  } catch (e) {
+    // Don't leave a pending booking holding inventory when Stripe is unreachable.
+    cancelPendingBooking(booking.id);
+    console.error("Stripe checkout session failed", e);
+    return { error: d.common.error };
+  }
   db.update(schema.bookings).set({ stripeSessionId: session.id }).where(eq(schema.bookings.id, booking.id)).run();
   redirect(session.url!);
 }

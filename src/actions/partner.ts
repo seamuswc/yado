@@ -5,13 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { audit, clientIp, consumeToken, createSession, createUser, findUserByEmail, issueToken, rateLimit, requireRole } from "@/lib/auth";
+import { audit, clientIp, consumeToken, createSession, createUser, findUserByEmail, getCurrentUser, issueToken, rateLimit, requireRole } from "@/lib/auth";
 import { APP_URL, sendEmail, templates } from "@/lib/email";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { amenityKeys, cities } from "@/lib/hotels";
 import { newId, nowIso, slugify } from "@/lib/ids";
 import { getStripe, PARTNER_ANNUAL_FEE } from "@/lib/stripe";
-import { applyFeePayment } from "@/lib/payments";
+import { applyFeePayment, subscriptionPeriodEnd } from "@/lib/payments";
+import { isLive } from "@/lib/hotels";
 import { translateListing } from "@/lib/translate";
 import type { ActionState } from "./auth";
 
@@ -105,11 +106,9 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
     return { error: `${d.book.required}: ${issue.path.join(".")}` };
   }
   if (findUserByEmail(acct.data.email)) return { error: d.partner.alreadyRegistered };
-
-  const user = createUser({ email: acct.data.email, name: acct.data.contactName, role: "partner", password: acct.data.password, locale });
   const L = listing.data;
 
-  // Auto-translate Japanese → English for the public toggle.
+  // Auto-translate Japanese → English for the public toggle (network call happens before any DB write).
   const tr = await translateListing({
     name: L.nameJa, area: L.areaJa, description: L.descriptionJa, access: L.accessJa,
     rooms: L.rooms.map((r) => ({ name: r.nameJa, description: r.descriptionJa })),
@@ -117,6 +116,10 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
   const stationEn = L.stationJa ? (tr.machine ? await translateShort(L.stationJa) : L.stationJa) : "";
 
   const hotelId = newId("h_");
+  // User + hotel + rooms are written atomically so a failure can't leave an account without a property.
+  const user = db.transaction(() => {
+  if (findUserByEmail(acct.data.email)) throw new Error("exists");
+  const user = createUser({ email: acct.data.email, name: acct.data.contactName, role: "partner", password: acct.data.password, locale });
   let slug = slugify(tr.en.name || L.nameJa);
   if (db.select({ id: schema.hotels.id }).from(schema.hotels).where(eq(schema.hotels.slug, slug)).get()) slug = `${slug}-${hotelId.slice(2, 8).toLowerCase()}`;
   db.insert(schema.hotels).values({
@@ -136,6 +139,8 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
       sleeps: r.sleeps, sizeSqm: r.sizeSqm ?? null, pricePerNight: r.pricePerNight, quantity: r.quantity,
       breakfast: r.breakfast, refundable: r.refundable, sortOrder: i,
     }).run();
+  });
+  return user;
   });
 
   const token = issueToken(user.id, "verify_email", 24);
@@ -176,9 +181,10 @@ const editSchema = listingSchema.extend({
 });
 
 export async function updateListing(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const user = await requireRole("partner", "head_admin");
   const locale = loc(formData.get("locale"));
   const d = getDictionary(locale);
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "partner" && user.role !== "head_admin")) return { error: d.auth.signIn };
   const hotelId = String(formData.get("hotelId") ?? "");
   const hotel = user.role === "head_admin"
     ? db.select().from(schema.hotels).where(eq(schema.hotels.id, hotelId)).get()
@@ -195,7 +201,10 @@ export async function updateListing(_prev: ActionState, formData: FormData): Pro
 
   let en = { name: extra.nameEn, area: extra.areaEn, description: extra.descriptionEn, access: extra.accessEn, station: extra.stationEn };
   let roomsEn = L.rooms.map((r) => ({ name: r.nameEn ?? "", description: r.descriptionEn ?? "" }));
-  let translation: schema.Hotel["translation"] = hotel.translation === "pending" && !en.name ? "pending" : "manual";
+  // English copy that still equals the Japanese text is not a translation; keep it flagged for the admin.
+  const englishChanged = en.name !== hotel.nameEn || en.description !== hotel.descriptionEn || en.area !== hotel.areaEn || en.access !== hotel.accessEn;
+  const looksUntranslated = !en.name || en.name === L.nameJa || !en.description || en.description === L.descriptionJa;
+  let translation: schema.Hotel["translation"] = looksUntranslated ? "pending" : englishChanged ? "manual" : hotel.translation;
   if (retranslate) {
     const tr = await translateListing({ name: L.nameJa, area: L.areaJa, description: L.descriptionJa, access: L.accessJa, rooms: L.rooms.map((r) => ({ name: r.nameJa, description: r.descriptionJa })) });
     en = { ...tr.en, station: L.stationJa ? await translateShort(L.stationJa) : "" };
@@ -239,9 +248,17 @@ export async function startFeeCheckout(formData: FormData): Promise<void> {
   const user = await requireRole("partner");
   const locale = loc(formData.get("locale"));
   const hotel = ownedHotel(user.id, String(formData.get("hotelId") ?? ""));
-  if (!hotel || hotel.status !== "approved") redirect(`/${locale}/partner`);
+  if (!hotel || hotel.status !== "approved" || isLive(hotel)) redirect(`/${locale}/partner`);
 
   const stripe = getStripe();
+  if (stripe && hotel.stripeSubscriptionId) {
+    // An existing subscription may simply have renewed while a webhook was missed: sync from Stripe instead of billing again.
+    const end = await subscriptionPeriodEnd(hotel.stripeSubscriptionId);
+    if (end && end * 1000 > Date.now()) {
+      applyFeePayment(hotel.id, `sync:${hotel.stripeSubscriptionId}:${end}`, hotel.stripeSubscriptionId, end);
+      redirect(`/${locale}/partner?paid=1`);
+    }
+  }
   if (!stripe) {
     // Demo mode: simulate a successful annual payment (one year per click).
     applyFeePayment(hotel.id, `demo:${Date.now()}`, null);

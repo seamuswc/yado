@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         if (!settled) {
           // Paid, but the booking is no longer pending (e.g. cancelled by admin meanwhile): give the money back.
           const b = getBookingById(s.metadata.bookingId);
-          if (b && b.status !== "confirmed") await refundOrphanPayment(pi, b.id);
+          if (b && b.status === "cancelled") await refundOrphanPayment(pi, b.id);
         }
       }
       if (s.mode === "subscription" && s.metadata?.kind === "partner_fee" && s.metadata.hotelId) {
@@ -39,6 +39,16 @@ export async function POST(req: Request) {
       }
       break;
     }
+    case "checkout.session.async_payment_succeeded": {
+      const s = event.data.object;
+      if (s.metadata?.bookingId) {
+        const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
+        const settled = await settleBookingPayment(s.metadata.bookingId, s.id, pi);
+        if (!settled) { const b = getBookingById(s.metadata.bookingId); if (b && b.status === "cancelled") await refundOrphanPayment(pi, b.id); }
+      }
+      break;
+    }
+    case "checkout.session.async_payment_failed":
     case "checkout.session.expired": {
       const s = event.data.object;
       if (s.metadata?.bookingId) cancelPendingBooking(s.metadata.bookingId);

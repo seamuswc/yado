@@ -29,18 +29,18 @@ export default function Header({ locale, dict, user }: { locale: Locale; dict: D
               <Link href={accountHref} className="hidden sm:inline text-xs text-muted truncate max-w-[9rem]" title={user.email}>{user.email}</Link>
               <form action={signOut}>
                 <input type="hidden" name="locale" value={locale} />
-                <button className="text-xs font-medium px-2.5 py-1.5 rounded-full border border-line bg-card active:bg-primary-soft whitespace-nowrap" aria-label={dict.auth.signOut} title={`${dict.auth.signOut} (${user.email})`}>
+                <button className="text-xs font-medium px-3 py-2.5 rounded-full border border-line bg-card active:bg-primary-soft whitespace-nowrap min-h-10" aria-label={dict.auth.signOut} title={`${dict.auth.signOut} (${user.email})`}>
                   <span className="sm:hidden" aria-hidden>⏻</span><span className="hidden sm:inline">{dict.auth.signOut}</span>
                 </button>
               </form>
             </>
           ) : (
-            <Link href={`/${locale}/login`} className="text-xs font-medium px-2.5 py-1.5 rounded-full border border-line bg-card active:bg-primary-soft">{dict.auth.signIn}</Link>
+            <Link href={`/${locale}/login`} className="inline-flex items-center text-xs font-medium px-3 py-2.5 rounded-full border border-line bg-card active:bg-primary-soft min-h-10">{dict.auth.signIn}</Link>
           )}
           <Link
             href={switchHref}
             hrefLang={other}
-            className="text-xs font-medium px-2.5 py-1.5 rounded-full border border-line bg-card active:bg-primary-soft whitespace-nowrap"
+            className="inline-flex items-center text-xs font-medium px-3 py-2.5 rounded-full border border-line bg-card active:bg-primary-soft whitespace-nowrap min-h-10"
             aria-label={dict.langSwitch}
           >
             🌐 {dict.langSwitch}

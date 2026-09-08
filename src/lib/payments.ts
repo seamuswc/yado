@@ -6,6 +6,7 @@ import { getBookingById, markBookingPaid } from "./booking-server";
 import { APP_URL, sendEmail, templates } from "./email";
 import { formatDate, isLocale, type Locale } from "./i18n";
 import { nowIso } from "./ids";
+import Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { track } from "./analytics";
 
@@ -53,7 +54,11 @@ export async function reconcileStripeSession(bookingId: string, sessionId: strin
 export async function refundOrphanPayment(paymentIntentId: string | null, bookingId: string): Promise<void> {
   const stripe = getStripe();
   if (!stripe || !paymentIntentId) return;
-  await stripe.refunds.create({ payment_intent: paymentIntentId });
+  try {
+    await stripe.refunds.create({ payment_intent: paymentIntentId });
+  } catch (e) {
+    if (!(e instanceof Stripe.errors.StripeError && e.code === "charge_already_refunded")) throw e;
+  }
   db.update(schema.bookings).set({ status: "refunded", stripePaymentIntentId: paymentIntentId, cancelledAt: nowIso() }).where(eq(schema.bookings.id, bookingId)).run();
   audit(null, "booking.orphan_payment_refunded", bookingId, paymentIntentId);
 }
@@ -91,13 +96,14 @@ export async function subscriptionPeriodEnd(subscriptionId: string | null): Prom
 }
 
 /** Fallback when the fee webhook hasn't arrived yet. Only applies a session that belongs to this hotel. */
-export async function reconcileFeeSession(hotelId: string, sessionId: string): Promise<void> {
+export async function reconcileFeeSession(ownerId: string, sessionId: string): Promise<void> {
   const stripe = getStripe();
   if (!stripe) return;
-  const hotel = db.select().from(schema.hotels).where(eq(schema.hotels.id, hotelId)).get();
-  if (!hotel || hotel.lastFeeSource === sessionId) return;
   const session = await stripe.checkout.sessions.retrieve(sessionId);
-  if (session.metadata?.hotelId !== hotelId || session.metadata?.kind !== "partner_fee" || session.payment_status !== "paid") return;
+  const hotelId = session.metadata?.hotelId ?? "";
+  if (!hotelId || session.metadata?.kind !== "partner_fee" || session.payment_status !== "paid") return;
+  const hotel = db.select().from(schema.hotels).where(eq(schema.hotels.id, hotelId)).get();
+  if (!hotel || hotel.ownerId !== ownerId || hotel.lastFeeSource === sessionId) return;
   const subId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
   applyFeePayment(hotelId, sessionId, subId, await subscriptionPeriodEnd(subId));
 }
