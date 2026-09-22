@@ -11,7 +11,7 @@ export function openApiDocument(origin: string) {
       description: [
         "You are booking a hotel, or creating a hotel listing, for the person you are talking to.",
         "Guest example: book a room on these dates, for this budget, near this place. Call searchHotels with checkIn, checkOut, near, and maxPricePerNight or maxTotal, then createBooking. Never ask for the card number, expiry, or CVC. If the response has paymentUrl, send the guest there. If it has confirmationUrl, the stay is confirmed.",
-        "Hotel example: make a listing with these photos, for this nightly price, at this location. Send Authorization: Bearer and the hotel's yado_ key, then POST name, city, address, pricePerNight, and photos. English is fine.",
+        "Hotel example: add these rooms, prices, photos, and details to my listing. Send Authorization: Bearer and the hotel's yado_ key. First GET /api/v1/listings: the property the owner registered on the website is already there, so PUT its rooms, photos, description, amenities, station, and check-in times to /api/v1/listings/{id}. Name, type, city, address, and map pin were set at registration and are confirmed by Yado; the API keeps them as they are. POST /api/v1/listings only for an additional property. English is fine.",
         "Money is yen. Dates are YYYY-MM-DD. Only live hotels can be booked. The createListing response says whether this listing is live. On a test server without Stripe a new listing goes live at once; on production it stays pending until an admin approves it and the annual fee is paid.",
         "Send a unique Idempotency-Key header on POST and PUT so a retry does not create a second booking or listing.",
       ].join(" "),
@@ -57,25 +57,26 @@ export function openApiDocument(origin: string) {
         },
         ListingRoom: {
           type: "object",
-          required: ["nameJa", "sleeps", "pricePerNight", "quantity"],
+          required: ["pricePerNight"],
           properties: {
             id: { type: "string", description: "Existing room id when updating. Omit to add a room." },
+            name: { type: "string", description: "Room name in any language. Default: the hotel name." },
             nameJa: { type: "string" },
             descriptionJa: { type: "string" },
             nameEn: { type: "string" },
             descriptionEn: { type: "string" },
-            sleeps: { type: "integer", minimum: 1, maximum: 12 },
+            sleeps: { type: "integer", minimum: 1, maximum: 12, description: "Default 2." },
             sizeSqm: { type: "integer" },
             pricePerNight: { type: "integer", description: "JPY including tax. Minimum 500." },
-            quantity: { type: "integer" },
+            quantity: { type: "integer", description: "How many rooms of this type. Default 1." },
             breakfast: { type: "boolean" },
             refundable: { type: "boolean" },
           },
         },
         Listing: {
           type: "object",
-          required: ["name", "city", "address", "pricePerNight"],
-          description: "Send the brief the hotel told you: name, city, address, pricePerNight (yen), photos, and a Google Maps link (mapsUrl). English is fine. Phone, licence, and Japanese are optional. A rooms array is optional; one room is created from pricePerNight.",
+          required: [],
+          description: "On update: rooms, photos (images), description, amenities, station, checkInTime, checkOutTime, phone, licenceNumber. On create: also name, city, address, pricePerNight (yen), and a Google Maps link (mapsUrl). English is fine. A rooms array is optional; one room is created from pricePerNight.",
           properties: {
             name: { type: "string", description: "Property name, in whatever language the hotel used." },
             nameJa: { type: "string", description: "Japanese name, if you have it. Otherwise send name." },
@@ -224,8 +225,8 @@ export function openApiDocument(origin: string) {
         post: {
           operationId: "createListing",
           tags: ["Listings"],
-          summary: "Create a hotel listing. The chatbot must send the partner API key.",
-          description: "Requires Authorization: Bearer and the key the hotel pasted into the chatbot. Body: name, city, address, pricePerNight in yen, and photos (https). English is fine. Do not ask for a card number.",
+          summary: "Create an additional property. The property registered on the website already exists; update that one with PUT.",
+          description: "Requires Authorization: Bearer and the key the hotel pasted into the chatbot. Returns 409 with the existing listing id when the owner already has a listing without rooms, or one with the same name; use PUT on that id. Body: name, city, address, pricePerNight in yen, photos (https), mapsUrl. English is fine. Do not ask for a card number.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: "Idempotency-Key", in: "header", schema: { type: "string" } },
@@ -249,7 +250,8 @@ export function openApiDocument(origin: string) {
         put: {
           operationId: "updateListing",
           tags: ["Listings"],
-          summary: "Replace a listing's public copy. Send the full listing, including room ids you want to keep.",
+          summary: "Add or replace rooms, photos, description, amenities, station, and check-in times on a listing.",
+          description: "Send only what you are adding; name, type, city, and address are filled from the stored listing. Those fields and the map pin were set at registration and confirmed by Yado, so the API keeps the stored values and lists any you tried to change in keptAsRegistered. Rooms replace the current set: include the id of any room you want to keep.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: "id", in: "path", required: true, schema: { type: "string" } },

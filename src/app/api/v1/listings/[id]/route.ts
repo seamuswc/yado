@@ -2,6 +2,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { coerceListingBody, englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
 import { ownedHotel, presentOwnedListing } from "@/lib/api-present";
+import { keepRegisteredFields, keptNote, mergeWithRegistered } from "@/lib/listing-lock";
 import { savePartnerListing } from "@/lib/listing-write";
 import { apiError, apiJson, idempotent, limit, readActor, readJson, zodError } from "@/lib/api-http";
 
@@ -38,22 +39,28 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (!hotel) return apiError(404, "not_found", "No listing of yours with that id.");
     const body = await readJson(req);
     if ("response" in body) return body.response;
-    const parsed = listingBodySchema.safeParse(coerceListingBody(body.data));
+    const merged = mergeWithRegistered(hotel, body.data);
+    const parsed = listingBodySchema.safeParse(coerceListingBody(merged.body));
     if (!parsed.success) return zodError(parsed.error);
     if (parsed.data.account) return apiError(400, "invalid_input", "Do not send account when updating a listing.");
+    const locked = keepRegisteredFields(hotel, listingFromBody(parsed.data));
+    const listing = locked.listing;
+    const kept = [...new Set([...locked.kept, ...merged.attempted])];
     const translation = await savePartnerListing(
       hotel,
-      listingFromBody(parsed.data),
+      listing,
       englishFromBody(parsed.data),
       { retranslate: parsed.data.retranslate === true, fillEnglish: true },
       auth.actor.user.id,
     );
     const updated = db.select().from(schema.hotels).where(eq(schema.hotels.id, hotel.id)).get();
+    const base = updated?.status === "pending"
+      ? "Saved. The listing stays hidden until an admin approves it and the annual fee is paid."
+      : "Saved.";
     return apiJson({
       listing: updated ? presentOwnedListing(updated) : { id: hotel.id, translation },
-      message: updated?.status === "pending"
-        ? "Saved. The listing stays hidden until an admin approves it and the annual fee is paid."
-        : "Saved.",
+      keptAsRegistered: kept,
+      message: base + keptNote(kept),
     });
   });
 }

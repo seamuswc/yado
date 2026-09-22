@@ -6,7 +6,7 @@ import { isoInDays } from "@/lib/ids";
 import { demoPaymentsAllowed } from "@/lib/stripe";
 import { LISTING_NEXT, presentOwnedListing } from "@/lib/api-present";
 import { apiError, apiJson, idempotent, limit, readActor, readJson, zodError } from "@/lib/api-http";
-import { partnerHotels } from "@/lib/partner-server";
+import { activeRoomCounts, partnerHotels } from "@/lib/partner-server";
 import { MapsLinkError, resolveMapsLink } from "@/lib/maps-link";
 
 /** A Google Maps link becomes the pin, the same as on the registration form. */
@@ -54,6 +54,15 @@ export async function POST(req: Request) {
     if (!parsed.success) return zodError(parsed.error);
     if (parsed.data.account) return apiError(400, "invalid_input", "Do not send a password. The chatbot authenticates with the partner API key.");
     const listing = listingFromBody(parsed.data);
+    // The property registered on the website already exists. Details go onto it with PUT, not into a second listing.
+    const existing = partnerHotels(actor.user.id);
+    const roomCounts = activeRoomCounts(existing.map((h) => h.id));
+    const sameName = existing.find((h) => h.nameJa.trim().toLowerCase() === listing.nameJa.trim().toLowerCase() || h.nameEn.trim().toLowerCase() === (listing.nameEn ?? "").trim().toLowerCase());
+    const unfilled = existing.find((h) => (roomCounts.get(h.id) ?? 0) === 0);
+    const target = sameName ?? (body.data && typeof body.data === "object" && (body.data as Record<string, unknown>).newProperty === true ? undefined : unfilled);
+    if (target) {
+      return apiError(409, "listing_exists", `This owner already has a listing "${target.nameJa}" (id ${target.id}). Add the rooms, photos, and details to it with PUT /api/v1/listings/${target.id}. Name, type, city, address, and map pin were set at registration and stay as they are. Send newProperty: true only if this is a different property.`);
+    }
     const created = await addListingForPartner(actor.user.id, listing);
     let hotel = db.select().from(schema.hotels).where(and(eq(schema.hotels.id, created.hotelId), eq(schema.hotels.ownerId, actor.user.id))).get();
     const liveNow = demoPaymentsAllowed();
