@@ -1,6 +1,7 @@
 import { addDays, todayIso } from "@/lib/dates";
 import { getLiveHotel } from "@/lib/hotels";
 import { nightsBetween } from "@/lib/i18n";
+import { MAX_GUESTS } from "@/lib/stay";
 import { apiError, apiJson, limit } from "@/lib/api-http";
 import { narrowRooms, presentHotelDetail } from "@/lib/api-present";
 
@@ -22,8 +23,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
   const guestsRaw = url.searchParams.get("guests");
   const guests = guestsRaw ? Number(guestsRaw) : undefined;
-  if (guests != null && (!Number.isInteger(guests) || guests < 1 || guests > 8)) {
-    return apiError(400, "invalid_input", "guests must be an integer from 1 to 8.");
+  if (guests != null && (!Number.isInteger(guests) || guests < 1 || guests > MAX_GUESTS)) {
+    return apiError(400, "invalid_input", `guests must be an integer from 1 to ${MAX_GUESTS}.`);
   }
   const maxPricePerNight = yenCap(url, "maxPricePerNight");
   if (typeof maxPricePerNight === "string") return apiError(400, "invalid_input", maxPricePerNight);

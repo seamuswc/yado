@@ -19,6 +19,8 @@ type Props = {
   nights: number;
   pricePerNight: number;
   stripe: boolean;
+  /** Development only: confirm without a card when Stripe is unset. Production leaves this false. */
+  allowDemo: boolean;
   userEmail: string | null;
 };
 
@@ -82,7 +84,7 @@ export default function BookingForm(p: Props) {
 
       <section>
         <h2 className="font-semibold mb-2">{dict.book.payment}</h2>
-        <p className="text-sm rounded-xl bg-primary-soft text-primary-dark px-3 py-2.5">{p.stripe ? dict.book.paymentNote : dict.common.demoMode}</p>
+        <p className="text-sm rounded-xl bg-primary-soft text-primary-dark px-3 py-2.5">{p.stripe ? dict.book.paymentNote : p.allowDemo ? dict.common.demoMode : dict.common.paymentsUnavailable}</p>
       </section>
 
       <section className="rounded-2xl bg-card border border-line p-4">
@@ -104,7 +106,7 @@ export default function BookingForm(p: Props) {
 
       {state.error && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{state.error}</p>}
 
-      <SubmitButton className="w-full text-base">
+      <SubmitButton className="w-full text-base" disabled={!p.stripe && !p.allowDemo}>
         {(p.stripe ? dict.book.payNow : dict.book.confirm)} · {formatPrice(total, locale)}
       </SubmitButton>
     </form>

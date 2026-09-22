@@ -7,6 +7,7 @@ import { rememberBookingRef } from "@/lib/booking-access";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { startGuestBooking } from "@/lib/start-booking";
 import { addDays } from "@/lib/dates";
+import { MAX_GUESTS } from "@/lib/stay";
 import type { ActionState } from "./auth";
 
 const schemaIn = z.object({
@@ -15,7 +16,7 @@ const schemaIn = z.object({
   room: z.string().min(1),
   checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => addDays(s, 0) === s, "invalid date"),
   checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => addDays(s, 0) === s, "invalid date"),
-  guests: z.coerce.number().int().min(1).max(8),
+  guests: z.coerce.number().int().min(1).max(MAX_GUESTS),
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().min(1).max(80),
   email: z.string().trim().toLowerCase().email().max(200),
@@ -47,7 +48,8 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
     userId: user?.id ?? null, via: "site",
   });
   if (!result.ok) {
-    if (result.error === "notFound" || result.error === "stripe" || result.error === "stripe_not_configured") return { error: d.common.error };
+    if (result.error === "stripe_not_configured") return { error: d.common.paymentsUnavailable };
+    if (result.error === "notFound" || result.error === "stripe") return { error: d.common.error };
     return { error: d.book.errors[result.error] };
   }
   await rememberBookingRef(result.booking.ref);

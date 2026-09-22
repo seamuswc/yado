@@ -59,7 +59,6 @@ export default function RegisterForm({ locale, dict, action }: Props) {
           <input id="mapsUrl" name="mapsUrl" type="url" required inputMode="url" placeholder="https://maps.app.goo.gl/…" className={field} />
           <p className="text-xs text-muted mt-1">{P.mapsHint}</p>
         </div>
-        <p className="text-xs text-muted">{P.roomsAuto}</p>
       </section>
 
       <label className="flex items-start gap-2 text-sm">

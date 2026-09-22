@@ -10,10 +10,9 @@ import { APP_URL, sendEmail, templates } from "@/lib/email";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { cities } from "@/lib/hotels";
 import { nowIso } from "@/lib/ids";
-import { getStripe, PARTNER_ANNUAL_FEE } from "@/lib/stripe";
+import { demoPaymentsAllowed, getStripe, PARTNER_ANNUAL_FEE } from "@/lib/stripe";
 import { applyFeePayment, subscriptionPeriodEnd } from "@/lib/payments";
 import { isLive } from "@/lib/hotels";
-import { draftProperty } from "@/lib/draft-listing";
 import { ListingError, registerPartnerWithListing, savePartnerListing, type NormalizedListing } from "@/lib/listing-write";
 import { MapsLinkError, resolveMapsLink } from "@/lib/maps-link";
 import type { ActionState } from "./auth";
@@ -128,31 +127,25 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
     if (e instanceof MapsLinkError) return { error: d.partner.mapsInvalid };
     throw e;
   }
-  const basics = { name: short.data.nameJa, type: short.data.type, city: short.data.city, address: short.data.address };
-  const drafted = await draftProperty(basics);
   const listing: NormalizedListing = {
     nameJa: short.data.nameJa,
+    nameEn: short.data.nameJa,
     type: short.data.type,
     city: short.data.city,
     address: short.data.address,
     phone: "",
     licenseNumber: "",
-    stationJa: drafted.stationJa,
-    areaJa: drafted.areaJa,
-    descriptionJa: drafted.descriptionJa,
-    accessJa: drafted.accessJa,
-    checkInTime: drafted.checkInTime,
-    checkOutTime: drafted.checkOutTime,
-    amenities: drafted.amenities,
+    stationJa: "",
+    areaJa: "",
+    descriptionJa: "",
+    accessJa: "",
+    checkInTime: "15:00",
+    checkOutTime: "11:00",
+    amenities: [],
     images: [],
     latitude: pin.latitude,
     longitude: pin.longitude,
-    nameEn: drafted.nameEn,
-    areaEn: drafted.areaEn,
-    descriptionEn: drafted.descriptionEn,
-    accessEn: drafted.accessEn,
-    stationEn: drafted.stationEn,
-    rooms: drafted.rooms,
+    rooms: [],
   };
   let created;
   try {
@@ -240,7 +233,8 @@ export async function startFeeCheckout(formData: FormData): Promise<void> {
     }
   }
   if (!stripe) {
-    // Demo mode: simulate a successful annual payment (one year per click).
+    if (!demoPaymentsAllowed()) redirect(`/${locale}/partner?error=payments`);
+    // Local demo: one year per click, with no card.
     applyFeePayment(hotel.id, `demo:${Date.now()}`, null);
     audit(user.id, "partner.fee_paid_demo", hotel.id);
     redirect(`/${locale}/partner?paid=1`);
@@ -268,6 +262,7 @@ export async function startFeeCheckout(formData: FormData): Promise<void> {
     success_url: `${APP_URL}/${locale}/partner?paid=1&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${APP_URL}/${locale}/partner`,
   });
-  redirect(session.url!);
+  if (!session.url) redirect(`/${locale}/partner?error=payments`);
+  redirect(session.url);
 }
 

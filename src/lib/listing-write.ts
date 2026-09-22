@@ -73,6 +73,9 @@ async function translateShort(ja: string): Promise<string> {
 
 /** Uses English supplied by the caller when it is a real translation; otherwise machine-translates from Japanese. */
 export async function resolveEnglish(L: NormalizedListing): Promise<PreparedEnglish> {
+  if (!L.descriptionJa && L.rooms.length === 0) {
+    return { translation: "pending", name: L.nameEn || L.nameJa, area: "", description: "", access: "", station: "", rooms: [] };
+  }
   if (hasManualEnglish(L)) {
     return {
       translation: "manual",

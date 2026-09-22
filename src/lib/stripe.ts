@@ -13,5 +13,10 @@ export function getStripe(): Stripe | null {
 
 export const stripeConfigured = () => getStripe() !== null;
 
+/** Local development may finish a stay or the annual fee without a card. Production never does. */
+export function demoPaymentsAllowed(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
 /** Annual partner fee in JPY. */
 export const PARTNER_ANNUAL_FEE = Number(process.env.PARTNER_ANNUAL_FEE_JPY ?? 30000);

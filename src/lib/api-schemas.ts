@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { addDays } from "./dates";
+import { MAX_GUESTS } from "./stay";
 import { amenityKeys, cities, type AmenityKey } from "./hotels-shared";
 import type { NormalizedListing } from "./listing-write";
 
@@ -26,8 +27,8 @@ export const listingBodySchema = z.object({
   type: z.enum(["hotel", "ryokan", "business", "hostel"]),
   city: z.string().refine((c) => cities.some((x) => x.id === c), "use a city id from GET /api/v1/cities"),
   address: z.string().trim().min(3).max(300),
-  phone: z.string().trim().min(5).max(40),
-  licenseNumber: z.string().trim().min(2).max(80),
+  phone: z.string().trim().max(40).default(""),
+  licenseNumber: z.string().trim().max(80).default(""),
   stationJa: z.string().trim().max(80).default(""),
   stationEn: z.string().trim().max(80).optional(),
   areaJa: z.string().trim().max(120).default(""),
@@ -51,6 +52,161 @@ export const listingBodySchema = z.object({
     password: z.string().min(10).max(200),
   }).optional(),
 });
+
+function textOf(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** Whole number from 18000, "18,000", or "¥18000". */
+function intOf(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+  if (typeof v !== "string") return undefined;
+  const n = Number(v.replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
+}
+
+function boolOf(v: unknown): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["true", "yes", "included", "1"].includes(s)) return true;
+    if (["false", "no", "none", "0"].includes(s)) return false;
+  }
+  return undefined;
+}
+
+const typeWords: Record<string, "hotel" | "ryokan" | "business" | "hostel"> = {
+  hotel: "hotel", ホテル: "hotel",
+  ryokan: "ryokan", 旅館: "ryokan", inn: "ryokan",
+  business: "business", "business hotel": "business", ビジネスホテル: "business",
+  hostel: "hostel", ホステル: "hostel", guesthouse: "hostel", "guest house": "hostel", ゲストハウス: "hostel",
+};
+
+function typeOf(v: unknown): string {
+  const s = textOf(v).toLowerCase();
+  return typeWords[s] ?? (s ? Object.entries(typeWords).find(([k]) => s.includes(k))?.[1] : undefined) ?? "hotel";
+}
+
+const amenityWords: Record<string, AmenityKey> = {
+  wifi: "wifi", "wi-fi": "wifi", "free wifi": "wifi", internet: "wifi",
+  onsen: "onsen", "hot spring": "onsen", 温泉: "onsen",
+  breakfast: "breakfast", 朝食: "breakfast",
+  parking: "parking", 駐車場: "parking",
+  restaurant: "restaurant", bar: "bar", gym: "gym", fitness: "gym", spa: "spa",
+  laundry: "laundry", "luggage storage": "luggage", luggage: "luggage",
+  tatami: "tatami", 和室: "tatami", "public bath": "bath", bath: "bath", 大浴場: "bath",
+  "non-smoking": "nonSmoking", "non smoking": "nonSmoking", nonsmoking: "nonSmoking", 禁煙: "nonSmoking",
+  accessible: "accessible", wheelchair: "accessible", バリアフリー: "accessible",
+};
+
+function amenitiesOf(v: unknown): string[] {
+  const list = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,、]/) : [];
+  const out = new Set<string>();
+  for (const item of list) {
+    const s = textOf(item).toLowerCase();
+    if (!s) continue;
+    if ((amenityKeys as string[]).includes(s)) { out.add(s); continue; }
+    const key = amenityKeys.find((k) => k.toLowerCase() === s) ?? amenityWords[s] ?? Object.entries(amenityWords).find(([w]) => s.includes(w))?.[1];
+    if (key) out.add(key);
+  }
+  return [...out];
+}
+
+/** "15:00", "3pm", "3 PM", "15" all become HH:MM. */
+function timeOf(v: unknown, fallback: string): string {
+  const s = textOf(v).toLowerCase();
+  if (!s) return fallback;
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!m) return fallback;
+  let h = Number(m[1]);
+  const min = m[2] ?? "00";
+  if (m[3] === "pm" && h < 12) h += 12;
+  if (m[3] === "am" && h === 12) h = 0;
+  if (h > 23) return fallback;
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+
+function cityIdOf(v: unknown): string {
+  const raw = textOf(v);
+  const s = raw.toLowerCase();
+  if (!s) return "";
+  const hit = cities.find((c) => c.id !== "other" && (c.id === s || c.name.en.toLowerCase() === s || raw === c.name.ja || s.includes(c.name.en.toLowerCase()) || raw.includes(c.name.ja)));
+  return hit?.id ?? "other";
+}
+
+/** True when the text is exactly a city, with nothing extra such as a neighbourhood. */
+function isBareCity(v: unknown): boolean {
+  const raw = textOf(v);
+  const s = raw.toLowerCase();
+  return cities.some((c) => c.id === s || c.name.en.toLowerCase() === s || c.name.ja === raw);
+}
+
+function urlList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
+
+/** Accepts the short brief an assistant actually sends: name, place, nightly price, photos. */
+export function coerceListingBody(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const v = input as Record<string, unknown>;
+  const name = textOf(v.nameJa) || textOf(v.name) || textOf(v.nameEn);
+  const nameEn = textOf(v.nameEn) || textOf(v.name) || name;
+  const city = cityIdOf(v.city) || cityIdOf(v.location) || cityIdOf(v.near) || "other";
+  // "Gion, Kyoto" in the city field keeps Gion as the address.
+  const placeText = [v.location, v.city, v.near].map(textOf).find((s) => s && !isBareCity(s)) ?? "";
+  const address = textOf(v.address) || placeText || cities.find((c) => c.id === city)?.name.en || "Japan";
+  const written = textOf(v.descriptionJa) || textOf(v.description) || textOf(v.descriptionEn);
+  const description = written.length >= 10 ? written : `${name || "Hotel"} in ${address}.`;
+  const images = urlList(v.images).length ? urlList(v.images) : urlList(v.photos);
+  const given = Array.isArray(v.rooms) ? v.rooms : [];
+  const rooms = given.length > 0 ? given.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const r = item as Record<string, unknown>;
+    const roomName = textOf(r.nameJa) || textOf(r.name) || textOf(r.nameEn) || name || "Room";
+    const roomText = textOf(r.descriptionJa) || textOf(r.description) || textOf(r.descriptionEn);
+    return {
+      ...r,
+      nameJa: roomName,
+      nameEn: textOf(r.nameEn) || textOf(r.name) || roomName,
+      descriptionJa: roomText,
+      descriptionEn: textOf(r.descriptionEn) || textOf(r.description) || roomText,
+      sleeps: intOf(r.sleeps ?? r.guests ?? r.capacity) ?? 2,
+      quantity: intOf(r.quantity ?? r.count ?? r.rooms) ?? 1,
+      pricePerNight: intOf(r.pricePerNight ?? r.price ?? r.pricePerNightJpy),
+      sizeSqm: intOf(r.sizeSqm ?? r.size) ?? null,
+      breakfast: boolOf(r.breakfast) ?? false,
+      refundable: boolOf(r.refundable) ?? true,
+    };
+  }) : [{
+    nameJa: textOf(v.roomName) || textOf(v.room) || name || "Room",
+    nameEn: textOf(v.roomName) || textOf(v.room) || nameEn || "Room",
+    sleeps: intOf(v.sleeps ?? v.guests) ?? 2,
+    quantity: intOf(v.quantity ?? v.roomCount) ?? 1,
+    pricePerNight: intOf(v.pricePerNight ?? v.price ?? v.pricePerNightJpy),
+    breakfast: boolOf(v.breakfast) ?? false,
+    refundable: boolOf(v.refundable) ?? true,
+  }];
+  return {
+    ...v,
+    nameJa: name,
+    nameEn,
+    descriptionJa: description,
+    descriptionEn: textOf(v.descriptionEn) || textOf(v.description) || description,
+    type: typeOf(v.type),
+    city,
+    address,
+    phone: textOf(v.phone),
+    licenseNumber: textOf(v.licenseNumber ?? v.licence ?? v.license),
+    stationJa: textOf(v.stationJa) || textOf(v.station) || textOf(v.nearestStation),
+    stationEn: textOf(v.stationEn) || textOf(v.station) || textOf(v.nearestStation) || undefined,
+    checkInTime: timeOf(v.checkInTime ?? v.checkIn, "15:00"),
+    checkOutTime: timeOf(v.checkOutTime ?? v.checkOut, "11:00"),
+    amenities: amenitiesOf(v.amenities),
+    images,
+    rooms,
+  };
+}
 
 export type ListingBody = z.infer<typeof listingBodySchema>;
 
@@ -109,7 +265,7 @@ export const bookingBodySchema = z.object({
   roomId: z.string().trim().min(1).max(40),
   checkIn: isoDate,
   checkOut: isoDate,
-  guests: z.number().int().min(1).max(8),
+  guests: z.number().int().min(1).max(MAX_GUESTS),
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().min(1).max(80),
   email: z.string().trim().toLowerCase().email().max(200),

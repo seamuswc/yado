@@ -19,9 +19,12 @@ export default async function ListingPage(props: PageProps<"/[locale]/partner/li
   const hotel = db.select().from(schema.hotels).where(and(eq(schema.hotels.id, hotelId), eq(schema.hotels.ownerId, user.id))).get();
   if (!hotel) redirect(`/${locale}/partner`);
   const rooms = db.select().from(schema.rooms).where(eq(schema.rooms.hotelId, hotel.id)).all();
+  const active = rooms.filter((r) => r.active);
+  const P = dict.partner;
   return (
-    <div className="px-4 pt-5">
-      <h1 className="text-xl font-bold mb-4">{dict.partner.editListing}</h1>
+    <div className="px-4 pt-5 space-y-4">
+      <h1 className="text-xl font-bold">{P.editListing}</h1>
+      {active.length === 0 && <p className="text-sm text-muted">{P.fillPending}</p>}
       <ListingForm locale={locale} dict={dict} initial={toDraft(hotel, rooms)} mode="edit" action={updateListing} translationAvailable={translationAvailable()} />
     </div>
   );

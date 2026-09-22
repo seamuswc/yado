@@ -7,7 +7,7 @@ import { getLiveHotel } from "./hotels";
 import { nightsBetween, type Locale } from "./i18n";
 import { newToken, sha256 } from "./ids";
 import { onBookingConfirmed } from "./payments";
-import { getStripe } from "./stripe";
+import { demoPaymentsAllowed, getStripe } from "./stripe";
 import { track } from "./analytics";
 import { todayIso } from "./dates";
 
@@ -40,8 +40,8 @@ export async function startGuestBooking(input: GuestBookingInput): Promise<
 
   expireStaleBookings();
   const stripe = getStripe();
-  // Assistant bookings always take the card on Stripe Checkout. Never confirm one without a payment page.
-  if (input.via === "api" && !stripe) return { ok: false, error: "stripe_not_configured" };
+  // Production never confirms a stay without Stripe Checkout. A demo server confirms it so an assistant can finish the booking.
+  if (!stripe && !demoPaymentsAllowed()) return { ok: false, error: "stripe_not_configured" };
   const viewToken = newToken();
   let booking: schema.Booking;
   try {

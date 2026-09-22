@@ -3,10 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Dictionary, Locale } from "@/lib/i18n";
-import { cities } from "@/lib/hotels-shared";
+import { cities, sortKeys, type SortKey } from "@/lib/hotels-shared";
 import { addDays } from "@/lib/dates";
+import { MAX_GUESTS } from "@/lib/stay";
 
-export type StayQuery = { q: string; city: string; checkIn: string; checkOut: string; guests: number };
+export type StayQuery = {
+  q: string; city: string; checkIn: string; checkOut: string; guests: number;
+  minPrice: string; maxPrice: string; sort: SortKey;
+};
 
 export default function SearchForm({ locale, dict, initial, today }: { locale: Locale; dict: Dictionary; initial: StayQuery; today: string }) {
   const router = useRouter();
@@ -15,13 +19,17 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (form.checkIn < today) { set("checkIn", today); return; }
+    const checkIn = form.checkIn < today ? today : form.checkIn;
+    const checkOut = form.checkOut > checkIn ? form.checkOut : addDays(checkIn, 1);
     const p = new URLSearchParams();
     if (form.q) p.set("q", form.q);
     if (form.city) p.set("city", form.city);
-    if (form.checkIn) p.set("checkIn", form.checkIn);
-    if (form.checkOut) p.set("checkOut", form.checkOut);
+    if (checkIn) p.set("checkIn", checkIn);
+    if (checkOut) p.set("checkOut", checkOut);
     p.set("guests", String(form.guests));
+    if (form.minPrice) p.set("minPrice", form.minPrice);
+    if (form.maxPrice) p.set("maxPrice", form.maxPrice);
+    if (form.sort && form.sort !== "recommended") p.set("sort", form.sort);
     router.push(`/${locale}/search?${p.toString()}`);
   }
 
@@ -73,11 +81,38 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
             onChange={(e) => set("checkOut", e.target.value)} className={field} required />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label htmlFor="minPrice" className={label}>{dict.search.priceMin}</label>
+          <input id="minPrice" inputMode="numeric" value={form.minPrice}
+            onChange={(e) => set("minPrice", e.target.value.replace(/[^\d]/g, ""))} className={field} />
+        </div>
+        <div>
+          <label htmlFor="maxPrice" className={label}>{dict.search.priceMax}</label>
+          <input id="maxPrice" inputMode="numeric" value={form.maxPrice}
+            onChange={(e) => set("maxPrice", e.target.value.replace(/[^\d]/g, ""))} className={field} />
+        </div>
+      </div>
+      <div>
+        <label htmlFor="sort" className={label}>{dict.search.sort}</label>
+        <select id="sort" value={form.sort} onChange={(e) => set("sort", e.target.value as StayQuery["sort"])} className={field}>
+          {sortKeys.map((s) => (
+            <option key={s} value={s}>{
+              s === "recommended" ? dict.search.sortRecommended
+              : s === "priceLow" ? dict.search.sortPriceLow
+              : s === "priceHigh" ? dict.search.sortPriceHigh
+              : s === "rating" ? dict.search.sortRating
+              : s === "size" ? dict.search.sortSize
+              : dict.search.sortSizeSmall
+            }</option>
+          ))}
+        </select>
+      </div>
       <div className="flex items-end gap-2">
         <div className="flex-1">
           <label htmlFor="guests" className={label}>{dict.search.guests}</label>
           <select id="guests" value={form.guests} onChange={(e) => set("guests", Number(e.target.value))} className={field}>
-            {[1, 2, 3, 4].map((n) => (
+            {Array.from({ length: MAX_GUESTS }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>{n} {n === 1 ? dict.search.guest : dict.search.guestsPlural}</option>
             ))}
           </select>

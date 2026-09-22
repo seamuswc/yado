@@ -2,6 +2,7 @@ import { addDays, todayIso } from "@/lib/dates";
 import { searchHotels, sortKeys, type SearchParams } from "@/lib/hotels";
 import { cities } from "@/lib/hotels-shared";
 import { nightsBetween } from "@/lib/i18n";
+import { MAX_GUESTS } from "@/lib/stay";
 import { apiError, apiJson, limit } from "@/lib/api-http";
 import { narrowRooms, presentHotelSummary } from "@/lib/api-present";
 
@@ -28,19 +29,21 @@ export async function GET(req: Request) {
   if (dates.error) return apiError(400, "invalid_dates", dates.error);
   const city = url.searchParams.get("city") ?? "";
   if (city && !cities.some((c) => c.id === city)) return apiError(400, "invalid_input", "Unknown city. Use an id from GET /api/v1/cities.");
+  const minPricePerNight = yenParam(url, "minPricePerNight");
+  if (typeof minPricePerNight === "string") return apiError(400, "invalid_input", minPricePerNight);
   const maxPricePerNight = yenParam(url, "maxPricePerNight");
   if (typeof maxPricePerNight === "string") return apiError(400, "invalid_input", maxPricePerNight);
   const maxTotal = yenParam(url, "maxTotal");
   if (typeof maxTotal === "string") return apiError(400, "invalid_input", maxTotal);
   if (maxTotal != null && !dates.checkIn) return apiError(400, "invalid_input", "maxTotal is the budget for the whole stay. Send checkIn and checkOut with it.");
   const guests = Number(url.searchParams.get("guests") ?? "1");
-  if (!Number.isInteger(guests) || guests < 1 || guests > 8) return apiError(400, "invalid_input", "guests must be an integer from 1 to 8.");
+  if (!Number.isInteger(guests) || guests < 1 || guests > MAX_GUESTS) return apiError(400, "invalid_input", `guests must be an integer from 1 to ${MAX_GUESTS}.`);
   const sortParam = url.searchParams.get("sort") ?? "recommended";
-  const sort = (sortKeys as string[]).includes(sortParam) ? sortParam as NonNullable<SearchParams["sort"]> : null;
-  if (!sort) return apiError(400, "invalid_input", "sort must be recommended, priceLow, priceHigh, rating, or size.");
+  const sort = (sortKeys as readonly string[]).includes(sortParam) ? sortParam as NonNullable<SearchParams["sort"]> : null;
+  if (!sort) return apiError(400, "invalid_input", "sort must be recommended, priceLow, priceHigh, rating, size, or sizeSmall.");
 
   const q = url.searchParams.get("q") || url.searchParams.get("near") || "";
-  const hotels = searchHotels({ q, city, guests, sort })
+  const hotels = searchHotels({ q, city, guests, sort, minPrice: minPricePerNight ?? undefined, maxPrice: maxPricePerNight ?? undefined })
     .map((h) => {
       const summary = presentHotelSummary(h, dates.checkIn, dates.checkOut);
       const rooms = narrowRooms(summary.rooms, { guests, maxPricePerNight, maxTotal });
@@ -58,6 +61,7 @@ export async function GET(req: Request) {
     checkOut: dates.checkOut ?? null,
     guests,
     near: q || null,
+    minPricePerNight,
     maxPricePerNight,
     maxTotal,
     hotels,

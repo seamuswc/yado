@@ -21,6 +21,9 @@ export const cities: City[] = [
   { id: "other", name: { en: "Other", ja: "その他" }, image: img("japan-other") },
 ];
 
+export const sortKeys = ["recommended", "priceLow", "priceHigh", "rating", "size", "sizeSmall"] as const;
+export type SortKey = (typeof sortKeys)[number];
+
 export const typeLabel: Record<"hotel" | "ryokan" | "business" | "hostel", Localized> = {
   hotel: { en: "Hotel", ja: "ホテル" },
   ryokan: { en: "Ryokan", ja: "旅館" },

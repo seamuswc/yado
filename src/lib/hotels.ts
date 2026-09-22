@@ -5,8 +5,8 @@ import type { Locale } from "./i18n";
 import { nowIso } from "./ids";
 
 export type { Localized, AmenityKey, City } from "./hotels-shared";
-export { amenityKeys, cities, typeLabel } from "./hotels-shared";
-import { amenityKeys, cities, type AmenityKey, type Localized, type City } from "./hotels-shared";
+export { amenityKeys, cities, sortKeys, typeLabel } from "./hotels-shared";
+import { amenityKeys, cities, type AmenityKey, type Localized, type City, type SortKey } from "./hotels-shared";
 
 export type Room = {
   id: string;
@@ -138,28 +138,33 @@ export type SearchParams = {
   q?: string;
   city?: string;
   guests?: number;
-  sort?: "recommended" | "priceLow" | "priceHigh" | "rating" | "size";
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: SortKey;
 };
-export const sortKeys: NonNullable<SearchParams["sort"]>[] = ["recommended", "priceLow", "priceHigh", "rating", "size"];
 
 export function searchHotels(params: SearchParams): Hotel[] {
   const q = (params.q ?? "").trim().toLowerCase();
   const guests = params.guests ?? 1;
-  let list = listLiveHotels().filter((h) => {
-    if (params.city && h.city !== params.city) return false;
-    if (!h.rooms.some((r) => r.sleeps >= guests)) return false;
+  let min = params.minPrice;
+  let max = params.maxPrice;
+  if (min != null && max != null && min > max) [min, max] = [max, min];
+  let list = listLiveHotels().flatMap((h) => {
+    if (params.city && h.city !== params.city) return [];
     if (q) {
       const cityName = getCity(h.city);
-      const hay = [h.name.en, h.name.ja, h.area.en, h.area.ja, h.station.en, h.station.ja, h.city, cityName?.name.en ?? "", cityName?.name.ja ?? ""].join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
+      const hay = [h.name.en, h.name.ja, h.area.en, h.area.ja, h.station.en, h.station.ja, h.address, h.city, cityName?.name.en ?? "", cityName?.name.ja ?? ""].join(" ").toLowerCase();
+      if (!hay.includes(q)) return [];
     }
-    return true;
+    const rooms = h.rooms.filter((r) => r.sleeps >= guests && (min == null || r.pricePerNight >= min) && (max == null || r.pricePerNight <= max));
+    return rooms.length ? [{ ...h, rooms }] : [];
   });
   switch (params.sort) {
     case "priceLow": list = [...list].sort((a, b) => minPrice(a) - minPrice(b)); break;
     case "priceHigh": list = [...list].sort((a, b) => minPrice(b) - minPrice(a)); break;
     case "rating": list = [...list].sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount); break;
     case "size": list = [...list].sort((a, b) => maxSize(b) - maxSize(a)); break;
+    case "sizeSmall": list = [...list].sort((a, b) => (maxSize(a) || Infinity) - (maxSize(b) || Infinity)); break;
     default: list = [...list].sort((a, b) => b.reviewCount * b.rating - a.reviewCount * a.rating);
   }
   return list;

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       keyId: key.id,
       role: user.role,
       email: user.email,
-      message: "Send this token as Authorization: Bearer on later requests. It is shown only once.",
+      message: "Send this token as Authorization: Bearer on later requests. You can copy it again from the API key page.",
     }, 201);
   } catch {
     return apiError(409, "too_many_keys", "This account already has 10 active keys. Revoke one with DELETE /api/v1/auth/token using that key.");

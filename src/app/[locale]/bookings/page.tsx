@@ -9,7 +9,7 @@ import { reviewableBookings } from "@/lib/reviews";
 import { formatDate, formatPrice, getDictionary, isLocale } from "@/lib/i18n";
 import { imgOpts } from "@/lib/images";
 import ApiKeyPanel from "@/components/ApiKeyPanel";
-import { listApiKeys } from "@/lib/api-auth";
+import { listOwnedApiKeys } from "@/lib/api-auth";
 import { APP_URL } from "@/lib/email";
 
 export default async function BookingsPage(props: PageProps<"/[locale]/bookings">) {
@@ -42,7 +42,7 @@ export default async function BookingsPage(props: PageProps<"/[locale]/bookings"
           <ApiKeyPanel
             audience="guest"
             specUrl={`${APP_URL}/api/v1/openapi.json`}
-            keys={listApiKeys(user.id).filter((k) => !k.revokedAt).map((k) => ({ id: k.id, prefix: k.prefix, label: k.label }))}
+            keys={listOwnedApiKeys(user.id).filter((k) => !k.revokedAt).map((k) => ({ id: k.id, token: k.token, prefix: k.prefix, label: k.label }))}
             copy={dict.api}
           />
         </div>

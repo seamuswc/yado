@@ -164,6 +164,7 @@ export const emails = sqliteTable("emails", {
 export const apiKeys = sqliteTable("api_keys", {
   id: text("id").primaryKey(),
   tokenHash: text("token_hash").notNull().unique(),
+  token: text("token"), // kept so the owner can copy the key again from the dashboard
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   label: text("label").notNull().default(""),
   prefix: text("prefix").notNull().default(""),

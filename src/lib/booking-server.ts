@@ -29,6 +29,7 @@ export function roomsAvailable(room: schema.Room, checkIn: string, checkOut: str
 
 /** Units left per active room of a hotel for the given stay. */
 export function availabilityForHotel(hotelId: string, checkIn: string, checkOut: string): Map<string, number> {
+  expireStaleBookings();
   const rooms = db.select().from(schema.rooms).where(and(eq(schema.rooms.hotelId, hotelId), eq(schema.rooms.active, true))).all();
   return new Map(rooms.map((r) => [r.id, roomsAvailable(r, checkIn, checkOut)]));
 }

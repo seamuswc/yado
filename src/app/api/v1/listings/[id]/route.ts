@@ -1,6 +1,6 @@
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
-import { englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
+import { coerceListingBody, englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
 import { ownedHotel, presentOwnedListing } from "@/lib/api-present";
 import { savePartnerListing } from "@/lib/listing-write";
 import { apiError, apiJson, idempotent, limit, readActor, readJson, zodError } from "@/lib/api-http";
@@ -38,7 +38,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (!hotel) return apiError(404, "not_found", "No listing of yours with that id.");
     const body = await readJson(req);
     if ("response" in body) return body.response;
-    const parsed = listingBodySchema.safeParse(body.data);
+    const parsed = listingBodySchema.safeParse(coerceListingBody(body.data));
     if (!parsed.success) return zodError(parsed.error);
     if (parsed.data.account) return apiError(400, "invalid_input", "Do not send account when updating a listing.");
     const translation = await savePartnerListing(

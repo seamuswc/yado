@@ -40,9 +40,10 @@ export function proxy(request: NextRequest) {
   if (!vid) vid = randomId();
   reqHeaders.set("x-visitor-id", vid);
   const res = NextResponse.next({ request: { headers: reqHeaders } });
-  if (newVisitor) res.cookies.set("yado_vid", vid, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax", httpOnly: true });
+  const secure = process.env.NODE_ENV === "production";
+  if (newVisitor) res.cookies.set("yado_vid", vid, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax", httpOnly: true, secure });
   if (hasLocale && request.cookies.get("locale")?.value !== localeSeg) {
-    res.cookies.set("locale", localeSeg, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
+    res.cookies.set("locale", localeSeg, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax", secure });
   }
   return res;
 }

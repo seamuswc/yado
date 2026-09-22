@@ -3,6 +3,12 @@ import { db, schema } from "@/db";
 
 export const APP_URL = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
+/** Address in the public footer. CONTACT_EMAIL overrides the placeholder. */
+export function publicContactEmail(): string {
+  const raw = process.env.CONTACT_EMAIL?.trim() ?? "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw : "hello@yado.example";
+}
+
 /**
  * Sends an email through Resend when RESEND_API_KEY is set; otherwise records it in the
  * `emails` table (visible at /admin/emails) and prints it to the server log.

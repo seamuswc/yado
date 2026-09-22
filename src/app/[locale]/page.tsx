@@ -7,6 +7,7 @@ import { getDictionary, isLocale } from "@/lib/i18n";
 import { cities, listLiveHotels, t } from "@/lib/hotels";
 import { readStay, stayQuery } from "@/lib/stay";
 import { todayIso } from "@/lib/dates";
+import { stripeConfigured } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function Home(props: PageProps<"/[locale]">) {
         <h1 className="text-2xl font-bold tracking-tight mb-1">{dict.tagline}</h1>
         <p className="text-sm text-muted mb-4">🇯🇵 {locale === "ja" ? "全国の宿を英語・日本語で検索" : "Hotels, ryokan and hostels across Japan"}</p>
         <div className="rounded-2xl bg-card border border-line p-3 shadow-sm">
-          <SearchForm locale={locale} dict={dict} initial={{ q: "", city: "", ...stay }} today={todayIso()} />
+          <SearchForm locale={locale} dict={dict} initial={{ q: "", city: "", minPrice: "", maxPrice: "", sort: "recommended", ...stay }} today={todayIso()} />
         </div>
       </section>
 
@@ -67,7 +68,7 @@ export default async function Home(props: PageProps<"/[locale]">) {
         </ul>
       </section>
 
-      <p className="px-4 pb-4 text-xs text-muted text-center">{dict.footer}</p>
+      {!stripeConfigured() && <p className="px-4 pb-4 text-xs text-muted text-center">{dict.footer}</p>}
     </div>
   );
 }

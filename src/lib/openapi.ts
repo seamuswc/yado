@@ -1,8 +1,7 @@
-import { APP_URL } from "./email";
 import { amenityKeys, cities } from "./hotels-shared";
 
 /** OpenAPI 3.0 document for ChatGPT custom GPT actions and Grok / other assistants that import an OpenAPI spec. */
-export function openApiDocument() {
+export function openApiDocument(origin: string) {
   const cityIds = cities.map((c) => c.id);
   return {
     openapi: "3.0.3",
@@ -11,13 +10,13 @@ export function openApiDocument() {
       version: "1.0.0",
       description: [
         "You are booking a hotel, or creating a hotel listing, for the person you are talking to.",
-        "Guest example: book a room on these dates, for this budget, near this place. Call searchHotels with checkIn, checkOut, near, and maxPricePerNight or maxTotal, then createBooking. Never ask for the card number, expiry, or CVC. paymentUrl is a Stripe Checkout page; the guest enters the card there. The stay is not booked until they pay.",
-        "Hotel example: make a listing with these photos, for this nightly price, at this location. The chatbot must already have the hotel API key (Authorization: Bearer yado_…). Photos are https URLs in images. pricePerNight is yen per night. Location is city plus address.",
-        "Money is yen. Dates are YYYY-MM-DD. Only live hotels can be booked. A new listing is not searchable until an admin approves it and the annual fee is paid.",
+        "Guest example: book a room on these dates, for this budget, near this place. Call searchHotels with checkIn, checkOut, near, and maxPricePerNight or maxTotal, then createBooking. Never ask for the card number, expiry, or CVC. If the response has paymentUrl, send the guest there. If it has confirmationUrl, the stay is confirmed.",
+        "Hotel example: make a listing with these photos, for this nightly price, at this location. Send Authorization: Bearer and the hotel's yado_ key, then POST name, city, address, pricePerNight, and photos. English is fine.",
+        "Money is yen. Dates are YYYY-MM-DD. Only live hotels can be booked. The createListing response says whether this listing is live. On a test server without Stripe a new listing goes live at once; on production it stays pending until an admin approves it and the annual fee is paid.",
         "Send a unique Idempotency-Key header on POST and PUT so a retry does not create a second booking or listing.",
       ].join(" "),
     },
-    servers: [{ url: APP_URL }],
+    servers: [{ url: origin }],
     tags: [
       { name: "Search", description: "Find live hotels and rooms." },
       { name: "Bookings", description: "Create and look up guest bookings." },
@@ -75,15 +74,22 @@ export function openApiDocument() {
         },
         Listing: {
           type: "object",
-          required: ["nameJa", "type", "city", "address", "phone", "licenseNumber", "descriptionJa", "rooms"],
+          required: ["name", "city", "address", "pricePerNight"],
+          description: "Send the brief the hotel told you: name, city, address, pricePerNight (yen), photos, and a Google Maps link (mapsUrl). English is fine. Phone, licence, and Japanese are optional. A rooms array is optional; one room is created from pricePerNight.",
           properties: {
-            nameJa: { type: "string", description: "Property name in Japanese." },
-            nameEn: { type: "string", description: "English name. If you omit English, the server translates from Japanese." },
-            type: { type: "string", enum: ["hotel", "ryokan", "business", "hostel"] },
-            city: { type: "string", enum: cityIds },
+            name: { type: "string", description: "Property name, in whatever language the hotel used." },
+            nameJa: { type: "string", description: "Japanese name, if you have it. Otherwise send name." },
+            nameEn: { type: "string" },
+            roomName: { type: "string", description: "Name of the room, when you are not sending a rooms array." },
+            pricePerNight: { type: "integer", description: "Yen per night. Used when rooms is omitted." },
+            sleeps: { type: "integer", description: "How many guests the room sleeps. Default 2." },
+            photos: { type: "array", items: { type: "string" }, description: "https photo URLs. Same as images." },
+            type: { type: "string", enum: ["hotel", "ryokan", "business", "hostel"], description: "Default hotel." },
+            city: { type: "string", description: "City name or id, for example Kyoto or kyoto.", enum: cityIds },
             address: { type: "string" },
+            mapsUrl: { type: "string", description: "Google Maps link to the property (maps.app.goo.gl or maps.google.com). The pin is read from it." },
             phone: { type: "string" },
-            licenseNumber: { type: "string", description: "旅館業許可番号. Required." },
+            licenseNumber: { type: "string", description: "旅館業許可番号, if the hotel gave it to you." },
             stationJa: { type: "string" },
             stationEn: { type: "string" },
             areaJa: { type: "string" },
@@ -121,14 +127,15 @@ export function openApiDocument() {
           summary: "Search live hotels. Call this before booking.",
           parameters: [
             { name: "q", in: "query", schema: { type: "string" }, description: "City, station, area, or hotel name." },
-            { name: "near", in: "query", schema: { type: "string" }, description: "Same as q. Use this when the guest says 'near Shinjuku' or another place." },
+            { name: "near", in: "query", schema: { type: "string" }, description: "Same as q. A station, neighbourhood, or city name, matched against the listing's name, area, station, address, and city. For 'cheapest near X' send near=X and sort=priceLow. If nothing matches, search the city instead." },
             { name: "city", in: "query", schema: { type: "string", enum: cityIds } },
             { name: "checkIn", in: "query", schema: { type: "string", format: "date" }, description: "YYYY-MM-DD. Send with checkOut to see which rooms are free and the stay total." },
             { name: "checkOut", in: "query", schema: { type: "string", format: "date" } },
+            { name: "minPricePerNight", in: "query", schema: { type: "integer" }, description: "Lowest nightly price in yen, tax included." },
             { name: "maxPricePerNight", in: "query", schema: { type: "integer" }, description: "Highest nightly price in yen, tax included. Use when they name a per-night budget." },
             { name: "maxTotal", in: "query", schema: { type: "integer" }, description: "Highest price for the whole stay in yen. Requires checkIn and checkOut. Use when they say 'for 30000 yen' for those dates." },
             { name: "guests", in: "query", schema: { type: "integer", minimum: 1, maximum: 8 } },
-            { name: "sort", in: "query", schema: { type: "string", enum: ["recommended", "priceLow", "priceHigh", "rating", "size"] } },
+            { name: "sort", in: "query", schema: { type: "string", enum: ["recommended", "priceLow", "priceHigh", "rating", "size", "sizeSmall"] } },
           ],
           responses: { "200": { description: "Matching hotels and bookable rooms." }, "400": { description: "Invalid query" } },
         },
@@ -159,7 +166,7 @@ export function openApiDocument() {
           operationId: "createBooking",
           tags: ["Bookings"],
           summary: "Hold a room and return a Stripe Checkout link. Confirm hotel, room, dates, and guest details first.",
-          description: "No guest API key required. Payment is Stripe Checkout only. Never collect a card number, expiry, or CVC in the chat. Send the guest to paymentUrl. The booking stays pending_payment until they pay. If you send a guest API key, the email must match that account.",
+          description: "No guest API key required. Never collect a card number, expiry, or CVC. When the response includes paymentUrl, send the guest there to pay on Stripe. When it includes confirmationUrl and cardEntry is demo, the stay is already confirmed on this demo server.",
           parameters: [
             { name: "Idempotency-Key", in: "header", schema: { type: "string" }, description: "Unique per booking attempt. Reuse it if you retry." },
           ],
@@ -218,7 +225,7 @@ export function openApiDocument() {
           operationId: "createListing",
           tags: ["Listings"],
           summary: "Create a hotel listing. The chatbot must send the partner API key.",
-          description: "Requires Authorization: Bearer and the key the hotel pasted into the chatbot. Japanese text is required. Put photo links in images (https only). pricePerNight is yen per night. city and address are the location. Supply English when you already wrote it; otherwise the server translates. The listing stays pending until admin approval and the annual fee. Do not ask for a card number here; the annual fee is paid later on the partner dashboard via Stripe.",
+          description: "Requires Authorization: Bearer and the key the hotel pasted into the chatbot. Body: name, city, address, pricePerNight in yen, and photos (https). English is fine. Do not ask for a card number.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: "Idempotency-Key", in: "header", schema: { type: "string" } },
@@ -227,7 +234,7 @@ export function openApiDocument() {
             required: true,
             content: { "application/json": { schema: { $ref: "#/components/schemas/Listing" } } },
           },
-          responses: { "201": { description: "Listing created, not yet public." }, "400": { description: "Invalid listing" }, "409": { description: "Email already registered" } },
+          responses: { "201": { description: "Listing created. The response says whether guests can book it yet." }, "400": { description: "Invalid listing" }, "409": { description: "Email already registered" } },
         },
       },
       "/api/v1/listings/{id}": {
@@ -271,7 +278,7 @@ export function openApiDocument() {
                   properties: {
                     email: { type: "string", format: "email" },
                     password: { type: "string" },
-                    label: { type: "string", description: "Name for this key, such as ChatGPT or Grok." },
+                    label: { type: "string", description: "Name for this key, such as the assistant you will paste it into." },
                   },
                 },
               },

@@ -1,5 +1,5 @@
-import { APP_URL } from "@/lib/email";
 import { apiJson } from "@/lib/api-http";
+import { APP_URL } from "@/lib/email";
 import { stripeConfigured } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
@@ -9,12 +9,14 @@ export function GET() {
   return apiJson({
     name: "Yado",
     payments: stripeConfigured() ? "stripe" : "stripe_not_configured",
-    description: "Search and book hotels in Japan, or create a hotel listing, from ChatGPT, Grok, or any assistant that can call HTTPS.",
+    description: "Search and book hotels in Japan, or create a hotel listing, from any assistant that can call HTTPS.",
     openapi: `${root}/openapi.json`,
     guests: {
       search: `GET ${root}/hotels?near=shinjuku&checkIn=2026-11-01&checkOut=2026-11-03&guests=2&maxTotal=40000`,
       book: `POST ${root}/bookings`,
-      payment: "Stripe Checkout. The assistant never takes the card number. The guest opens paymentUrl and enters the card there.",
+      payment: stripeConfigured()
+        ? "Do not ask for a card number. Send the guest to paymentUrl. They pay on Stripe."
+        : "Do not ask for a card number. This server returns confirmationUrl and the stay is confirmed.",
     },
     hotels: {
       register: `POST ${root}/listings`,

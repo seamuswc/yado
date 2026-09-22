@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatDateLong, formatPrice, getDictionary, isLocale } from "@/lib/i18n";
-import { hotelStatusLabel, partnerHotels, toneClass } from "@/lib/partner-server";
+import { activeRoomCounts, hotelStatusLabel, partnerHotels, toneClass } from "@/lib/partner-server";
 import { bookingsForHotels } from "@/lib/booking-server";
 import { startFeeCheckout } from "@/actions/partner";
 import { reconcileFeeSession } from "@/lib/payments";
-import { PARTNER_ANNUAL_FEE, stripeConfigured } from "@/lib/stripe";
+import { PARTNER_ANNUAL_FEE, demoPaymentsAllowed, stripeConfigured } from "@/lib/stripe";
 import SubmitButton from "@/components/SubmitButton";
 import PartnerTabs from "@/components/PartnerTabs";
 
@@ -23,8 +23,11 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
     hotels = partnerHotels(user.id);
   }
   const P = dict.partner;
+  const roomCounts = activeRoomCounts(hotels.map((h) => h.id));
   const recent = bookingsForHotels(hotels.map((h) => h.id), 5);
   const stripe = stripeConfigured();
+  const allowDemo = demoPaymentsAllowed();
+  const notice = typeof sp.error === "string" ? sp.error : Array.isArray(sp.error) ? sp.error[0] : "";
 
   return (
     <div className="px-4 pt-5 space-y-5">
@@ -34,6 +37,8 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
       </div>
 
       <PartnerTabs locale={locale} dict={dict} current="dashboard" />
+
+      {notice === "payments" && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{dict.common.paymentsUnavailable}</p>}
 
       {hotels.length === 0 && (
         <div className="rounded-2xl bg-card border border-line p-6 text-center">
@@ -59,7 +64,8 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
                 {h.status === "rejected" && <p className="text-xs mt-1">{P.resubmitHint}</p>}
               </div>
             )}
-            {h.translation === "pending" && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">{P.translationPending}</p>}
+            {(roomCounts.get(h.id) ?? 0) === 0 && <p className="text-sm text-muted">{P.fillPending}</p>}
+            {h.translation === "pending" && h.descriptionJa && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">{P.translationPending}</p>}
             {h.paidUntil && <p className="text-sm text-muted">{P.paidUntil}: {formatDateLong(h.paidUntil, locale)}</p>}
 
             {needsFee && (
@@ -68,8 +74,14 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
                 <input type="hidden" name="hotelId" value={h.id} />
                 <p className="font-medium text-primary-dark">{P.feeTitle}</p>
                 <p className="text-sm">{P.feeBody.replace("{amount}", formatPrice(PARTNER_ANNUAL_FEE, locale))}</p>
-                <SubmitButton className="w-full">{stripe ? `${P.payFee} · ${formatPrice(PARTNER_ANNUAL_FEE, locale)}` : P.demoPay}</SubmitButton>
-                {!stripe && <p className="text-xs text-muted">{dict.common.demoMode}</p>}
+                {stripe || allowDemo ? (
+                  <>
+                    <SubmitButton className="w-full">{stripe ? `${P.payFee} · ${formatPrice(PARTNER_ANNUAL_FEE, locale)}` : P.demoPay}</SubmitButton>
+                    {!stripe && <p className="text-xs text-muted">{dict.common.demoMode}</p>}
+                  </>
+                ) : (
+                  <p className="text-sm">{dict.common.paymentsUnavailable}</p>
+                )}
               </form>
             )}
 

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { Suspense } from "react";
 import "../globals.css";
+import { publicContactEmail } from "@/lib/email";
 import { getDictionary, isLocale, locales } from "@/lib/i18n";
 import { getCurrentUser } from "@/lib/auth";
 import { countRequest, track } from "@/lib/analytics";
@@ -36,6 +37,7 @@ export default async function LocaleLayout(props: LayoutProps<"/[locale]">) {
   const { locale } = await props.params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
+  const contactEmail = publicContactEmail();
   const user = await getCurrentUser();
   const h = await headers();
   const path = h.get("x-pathname") ?? "";
@@ -54,7 +56,13 @@ export default async function LocaleLayout(props: LayoutProps<"/[locale]">) {
         <Suspense fallback={<div className="h-14 border-b border-line" />}>
           <Header locale={locale} dict={dict} user={user ? { email: user.email, role: user.role } : null} />
         </Suspense>
-        <main className="flex-1 w-full max-w-md mx-auto pb-24">{props.children}</main>
+        <main className="flex-1 w-full max-w-md mx-auto pb-24">
+          {props.children}
+          <footer className="px-4 pb-4 text-center">
+            <p className="text-sm font-semibold">{dict.contact.title}</p>
+            <a href={`mailto:${contactEmail}`} className="text-sm text-primary underline">{contactEmail}</a>
+          </footer>
+        </main>
         <BottomNav locale={locale} dict={dict} bookingsHref={user?.role === "partner" ? `/${locale}/partner/bookings` : undefined} />
       </body>
     </html>

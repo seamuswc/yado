@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Dictionary } from "./i18n";
 import { isLive } from "./hotels";
@@ -7,6 +7,16 @@ import { nowIso } from "./ids";
 
 export function partnerHotels(ownerId: string) {
   return db.select().from(schema.hotels).where(eq(schema.hotels.ownerId, ownerId)).all();
+}
+
+export function activeRoomCounts(hotelIds: string[]): Map<string, number> {
+  if (!hotelIds.length) return new Map();
+  const rows = db.select({ hotelId: schema.rooms.hotelId, n: sql<number>`count(*)` })
+    .from(schema.rooms)
+    .where(and(inArray(schema.rooms.hotelId, hotelIds), eq(schema.rooms.active, true)))
+    .groupBy(schema.rooms.hotelId)
+    .all();
+  return new Map(rows.map((r) => [r.hotelId, Number(r.n)]));
 }
 
 export function hotelStatusLabel(h: schema.Hotel, d: Dictionary): { label: string; tone: "ok" | "warn" | "bad" | "muted" } {

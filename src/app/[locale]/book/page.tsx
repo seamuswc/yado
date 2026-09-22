@@ -5,7 +5,7 @@ import { getDictionary, isLocale, nightsBetween } from "@/lib/i18n";
 import { getLiveHotel, t } from "@/lib/hotels";
 import { readStay, stayQuery } from "@/lib/stay";
 import { getCurrentUser } from "@/lib/auth";
-import { stripeConfigured } from "@/lib/stripe";
+import { demoPaymentsAllowed, stripeConfigured } from "@/lib/stripe";
 
 export async function generateMetadata(props: PageProps<"/[locale]/book">): Promise<Metadata> {
   const { locale } = await props.params;
@@ -20,8 +20,8 @@ export default async function BookPage(props: PageProps<"/[locale]/book">) {
   const one = (k: string) => (Array.isArray(sp[k]) ? sp[k]?.[0] : sp[k]) ?? "";
   const hotel = getLiveHotel(one("hotel"));
   const room = hotel?.rooms.find((r) => r.id === one("room"));
-  if (!hotel || !room) redirect(`/${locale}/search`);
   const stay = readStay(sp);
+  if (!hotel || !room || room.sleeps < stay.guests) redirect(hotel ? `/${locale}/hotels/${hotel.id}?${stayQuery(stay)}` : `/${locale}/search`);
   const nights = nightsBetween(stay.checkIn, stay.checkOut);
   if (nights < 1) redirect(`/${locale}/hotels/${hotel.id}?${stayQuery(stay)}`);
   const user = await getCurrentUser();
@@ -34,7 +34,7 @@ export default async function BookPage(props: PageProps<"/[locale]/book">) {
         hotelSlug={hotel.id} hotelName={t(hotel.name, locale)}
         roomId={room.id} roomName={t(room.name, locale)} refundable={room.refundable}
         stay={stay} nights={nights} pricePerNight={room.pricePerNight}
-        stripe={stripeConfigured()} userEmail={user?.role === "guest" ? user.email : null}
+        stripe={stripeConfigured()} allowDemo={demoPaymentsAllowed()} userEmail={user?.role === "guest" ? user.email : null}
       />
     </div>
   );

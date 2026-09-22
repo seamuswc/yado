@@ -65,13 +65,23 @@ export async function POST(req: Request) {
       const f = failures[result.error];
       return apiError(f.status, f.code, f.message);
     }
-    if (!result.paymentUrl) return apiError(502, "payment_unavailable", "Stripe did not return a card page. The stay is not confirmed. Do not ask the guest for a card number.");
     const booking = getBookingById(result.booking.id);
     if (!booking) return apiError(500, "error", "The booking was created but could not be loaded.");
+    const confirmationUrl = result.confirmationUrl;
+    if (!result.paymentUrl) {
+      return apiJson({
+        ...presentBooking(booking),
+        paymentUrl: null,
+        confirmationUrl,
+        viewToken: result.viewToken,
+        cardEntry: "demo",
+        message: "This demo server has no Stripe key, so no card was charged and the stay is confirmed. Send the guest to confirmationUrl. On a live server you would send them to paymentUrl instead, and you still must not ask for the card number.",
+      }, 201);
+    }
     return apiJson({
       ...presentBooking(booking),
       paymentUrl: result.paymentUrl,
-      confirmationUrl: result.confirmationUrl,
+      confirmationUrl,
       viewToken: result.viewToken,
       cardEntry: "stripe_checkout",
       message: "The room is held, not paid. Do not ask for the card number, expiry, or CVC. Send the guest to paymentUrl. They enter the card on Stripe. The booking stays pending_payment until Stripe confirms payment.",
