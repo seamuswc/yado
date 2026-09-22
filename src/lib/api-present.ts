@@ -90,6 +90,8 @@ export function presentBooking(b: BookingWithHotel) {
     currency: b.currency,
     guest: { email: b.email, phone: b.phone },
     requests: b.requests,
+    requestsEn: b.requestsEn || b.requests,
+    requestsJa: b.requestsJa || b.requests,
   };
 }
 

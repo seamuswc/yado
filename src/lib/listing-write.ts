@@ -63,7 +63,8 @@ type PreparedEnglish = {
 };
 
 function hasManualEnglish(L: NormalizedListing): boolean {
-  return !!L.nameEn && !!L.descriptionEn && L.descriptionEn !== L.descriptionJa;
+  // Real English copy, not the Japanese text pasted into the English fields.
+  return !!L.descriptionEn && L.descriptionEn !== L.descriptionJa && !hasJapanese(L.descriptionEn);
 }
 
 /**

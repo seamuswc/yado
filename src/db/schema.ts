@@ -108,6 +108,8 @@ export const bookings = sqliteTable("bookings", {
   email: text("email").notNull(),
   phone: text("phone").notNull().default(""),
   requests: text("requests").notNull().default(""),
+  requestsEn: text("requests_en").notNull().default(""),
+  requestsJa: text("requests_ja").notNull().default(""),
   locale: text("locale").notNull().default("en"),
   status: text("status", { enum: ["pending_payment", "confirmed", "cancelled", "refunded"] }).notNull().default("pending_payment"),
   paymentMode: text("payment_mode", { enum: ["stripe", "demo"] }).notNull().default("demo"),
@@ -200,6 +202,10 @@ export const reviews = sqliteTable("reviews", {
   rating: integer("rating").notNull(), // 1–5
   title: text("title").notNull().default(""),
   body: text("body").notNull().default(""),
+  titleEn: text("title_en").notNull().default(""),
+  titleJa: text("title_ja").notNull().default(""),
+  bodyEn: text("body_en").notNull().default(""),
+  bodyJa: text("body_ja").notNull().default(""),
   locale: text("locale").notNull().default("en"),
   stayMonth: text("stay_month").notNull().default(""), // YYYY-MM of the stay
   status: text("status", { enum: ["visible", "hidden"] }).notNull().default("visible"),

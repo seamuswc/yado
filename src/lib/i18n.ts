@@ -270,7 +270,7 @@ const en = {
     translationMachine: "Auto-translated between Japanese and English. You can edit either version.",
     translationPending: "Not translated yet. Translation is not configured on this server, so the Japanese and English copy are the same text.",
     translationManual: "Edited manually.",
-    retranslate: "Re-translate from Japanese",
+    retranslate: "Re-translate the other language",
     englishFields: "English (auto-filled)",
     japaneseFields: "Japanese",
     noBookings: "No bookings yet.",
@@ -301,6 +301,7 @@ const en = {
     stayedIn: "Stayed",
     eligibleIntro: "You can review these completed stays:",
     displayName: "Display name",
+    translated: "Translated",
   },
   api: {
     title: "API key",
@@ -629,7 +630,7 @@ const ja: Dictionary = {
     translationMachine: "日本語と英語の間で自動翻訳されています。どちらも編集できます。",
     translationPending: "未翻訳です。このサーバーでは翻訳が設定されていないため、日本語欄と英語欄は同じ内容です。",
     translationManual: "手動で編集済み。",
-    retranslate: "日本語から再翻訳",
+    retranslate: "もう一方の言語を再翻訳",
     englishFields: "英語（自動入力）",
     japaneseFields: "日本語",
     noBookings: "まだ予約はありません。",
@@ -660,6 +661,7 @@ const ja: Dictionary = {
     stayedIn: "宿泊",
     eligibleIntro: "以下の宿泊について口コミを投稿できます：",
     displayName: "表示名",
+    translated: "翻訳",
   },
   api: {
     title: "APIキー",

@@ -64,11 +64,9 @@ for (const h of seedHotels) {
   });
   for (const rv of seedReviews.filter((x) => x.hotel === h.id)) {
     db.insert(schema.reviews).values({
-      id: newId("rv_"), hotelId, authorName: rv.author, rating: rv.rating, title: rv.title.en, body: rv.body.en, locale: "en", stayMonth: rv.stayMonth,
-    }).run();
-    // Japanese copy of the same review so both locales read naturally.
-    db.insert(schema.reviews).values({
-      id: newId("rv_"), hotelId, authorName: rv.author, rating: rv.rating, title: rv.title.ja, body: rv.body.ja, locale: "ja", stayMonth: rv.stayMonth,
+      id: newId("rv_"), hotelId, authorName: rv.author, rating: rv.rating,
+      title: rv.title.en, body: rv.body.en, locale: "en", stayMonth: rv.stayMonth,
+      titleEn: rv.title.en, titleJa: rv.title.ja, bodyEn: rv.body.en, bodyJa: rv.body.ja,
     }).run();
   }
   recomputeRating(hotelId);

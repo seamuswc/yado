@@ -25,8 +25,10 @@ export async function submitReview(_prev: ActionState, formData: FormData): Prom
   if (!parsed.success) return { error: d.book.required };
   const gate = canReview(parsed.data.bookingId, user.id, user.email);
   if (!gate.ok) return { error: d.reviews.onlyVerified };
-  addReview({ booking: gate.booking, userId: user.id, authorName: parsed.data.authorName, rating: parsed.data.rating, title: parsed.data.title, body: parsed.data.body, locale });
+  await addReview({ booking: gate.booking, userId: user.id, authorName: parsed.data.authorName, rating: parsed.data.rating, title: parsed.data.title, body: parsed.data.body, locale });
   track("review_posted", { locale, meta: { hotel: gate.booking.hotelId, rating: parsed.data.rating } });
   revalidatePath(`/${locale}/bookings`);
+  revalidatePath(`/en/hotels`);
+  revalidatePath(`/ja/hotels`);
   return { ok: true, message: d.reviews.thanks };
 }

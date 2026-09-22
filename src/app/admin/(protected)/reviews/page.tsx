@@ -15,7 +15,13 @@ export default async function ReviewsPage() {
           <tr key={r.id} className={`hover:bg-paper ${r.status === "hidden" ? "opacity-60" : ""}`}>
             <td className="px-3 py-2"><HotelLink id={h.id} name={h.nameJa} /></td>
             <td className="px-3 py-2 text-accent">{"★".repeat(r.rating)}</td>
-            <td className="px-3 py-2 max-w-md"><div className="font-medium">{r.title}</div><div className="text-xs text-muted line-clamp-2">{r.body}</div></td>
+            <td className="px-3 py-2 max-w-md">
+              <div className="font-medium">{r.titleEn || r.title}</div>
+              <div className="text-xs text-muted line-clamp-2">{r.bodyEn || r.body}</div>
+              {(r.titleJa || r.bodyJa) && (r.titleJa !== r.titleEn || r.bodyJa !== r.bodyEn) && (
+                <div className="mt-1 text-xs text-muted line-clamp-2">JA: {r.titleJa || r.title} — {r.bodyJa || r.body}</div>
+              )}
+            </td>
             <td className="px-3 py-2 text-xs">{r.authorName}<br />{r.locale} · {r.stayMonth}</td>
             <td className="px-3 py-2"><Badge tone={r.bookingId ? "ok" : "muted"}>{r.bookingId ? "verified booking" : "seed"}</Badge></td>
             <td className="px-3 py-2 text-xs">{fmtDate(r.createdAt)}</td>

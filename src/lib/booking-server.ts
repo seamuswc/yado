@@ -41,7 +41,8 @@ export class BookingError extends Error {
 
 export type NewBooking = {
   hotelId: string; roomId: string; userId: string | null; checkIn: string; checkOut: string; guests: number;
-  firstName: string; lastName: string; email: string; phone: string; requests: string; locale: string;
+  firstName: string; lastName: string; email: string; phone: string; requests: string;
+  requestsEn?: string; requestsJa?: string; locale: string;
   paymentMode: "stripe" | "demo";
 };
 
@@ -62,7 +63,8 @@ function createBookingTx(input: NewBooking): schema.Booking {
   db.insert(schema.bookings).values({
     id, ref, hotelId: input.hotelId, roomId: input.roomId, userId: input.userId,
     checkIn: input.checkIn, checkOut: input.checkOut, guests: input.guests, nights, total: room.pricePerNight * nights,
-    firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), phone: input.phone, requests: input.requests,
+    firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), phone: input.phone,
+    requests: input.requests, requestsEn: input.requestsEn ?? "", requestsJa: input.requestsJa ?? "",
     locale: input.locale, status: input.paymentMode === "demo" ? "confirmed" : "pending_payment", paymentMode: input.paymentMode,
     paidAt: input.paymentMode === "demo" ? nowIso() : null,
   }).run();

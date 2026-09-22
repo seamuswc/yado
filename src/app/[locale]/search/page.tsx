@@ -62,13 +62,13 @@ export default async function SearchPage(props: PageProps<"/[locale]/search">) {
             <span className="text-primary group-open:rotate-180 transition">▾</span>
           </summary>
           <div className="pt-3">
-            <SearchForm locale={locale} dict={dict} initial={formInitial} today={todayIso()} />
+            <SearchForm key={`m-${q}-${city}-${stay.checkIn}-${stay.checkOut}-${stay.guests}-${minPrice}-${maxPrice}-${sort}`} locale={locale} dict={dict} initial={formInitial} today={todayIso()} />
           </div>
         </details>
       </div>
       <aside className="hidden md:block">
         <div className="sticky top-[4.5rem] rounded-2xl bg-card border border-line p-4">
-          <SearchForm locale={locale} dict={dict} initial={formInitial} today={todayIso()} idPrefix="side-" />
+          <SearchForm key={`d-${q}-${city}-${stay.checkIn}-${stay.checkOut}-${stay.guests}-${minPrice}-${maxPrice}-${sort}`} locale={locale} dict={dict} initial={formInitial} today={todayIso()} idPrefix="side-" />
         </div>
       </aside>
 

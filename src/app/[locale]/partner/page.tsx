@@ -114,7 +114,7 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
               {[
                 (lc === "ja" ? h.stationJa : h.stationEn) && `🚉 ${lc === "ja" ? h.stationJa : h.stationEn || h.stationJa}`,
                 `${dict.hotel.checkInTime} ${h.checkInTime} · ${dict.hotel.checkOutTime} ${h.checkOutTime}`,
-                h.amenities.length > 0 && h.amenities.map((a) => dict.amenities[a as keyof typeof dict.amenities]).join(" · "),
+                h.amenities.length > 0 && h.amenities.map((a) => dict.amenities[a as keyof typeof dict.amenities]).filter(Boolean).join(" · "),
               ].filter(Boolean).join("  |  ")}
             </p>
             {h.reviewNote && (h.status === "rejected" || h.status === "suspended") && (

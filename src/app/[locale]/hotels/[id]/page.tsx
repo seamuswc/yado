@@ -12,13 +12,6 @@ import { readStay, stayQuery } from "@/lib/stay";
 import { imgOpts } from "@/lib/images";
 import { todayIso } from "@/lib/dates";
 
-export async function generateMetadata(props: PageProps<"/[locale]/hotels/[id]">): Promise<Metadata> {
-  const { locale, id } = await props.params;
-  const hotel = getLiveHotel(id);
-  if (!hotel || !isLocale(locale)) return {};
-  return { title: t(hotel.name, locale), description: t(hotel.description, locale).slice(0, 160) };
-}
-
 /** The owner (or an admin) sees a pending listing exactly as guests will, with a banner and no Book buttons. */
 async function loadHotel(id: string): Promise<{ hotel: Hotel; preview: boolean } | null> {
   const live = getLiveHotel(id);
@@ -28,6 +21,14 @@ async function loadHotel(id: string): Promise<{ hotel: Hotel; preview: boolean }
   const user = await getCurrentUser();
   const allowed = !!user && (user.role === "head_admin" || (user.role === "partner" && found.row.ownerId === user.id));
   return allowed ? { hotel: found.hotel, preview: true } : null;
+}
+
+export async function generateMetadata(props: PageProps<"/[locale]/hotels/[id]">): Promise<Metadata> {
+  const { locale, id } = await props.params;
+  if (!isLocale(locale)) return {};
+  const loaded = await loadHotel(id);
+  if (!loaded) return {};
+  return { title: t(loaded.hotel.name, locale), description: t(loaded.hotel.description, locale).slice(0, 160) };
 }
 
 /** Desktop gallery: one photo wide; two side by side; otherwise one big photo with two or four small ones. */
@@ -229,7 +230,10 @@ export default async function HotelPage(props: PageProps<"/[locale]/hotels/[id]"
                   </div>
                   {r.title && <p className="font-medium mt-1">{r.title}</p>}
                   <p className="text-sm mt-1 whitespace-pre-line">{r.body}</p>
-                  <p className="text-xs text-muted mt-2">{r.authorName} · {dict.reviews.stayedIn} {r.stayMonth}</p>
+                  <p className="text-xs text-muted mt-2">
+                    {r.authorName} · {dict.reviews.stayedIn} {r.stayMonth}
+                    {r.translated && <> · {dict.reviews.translated}</>}
+                  </p>
                 </li>
               ))}
             </ul>

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatPrice, getDictionary, isLocale } from "@/lib/i18n";
 import { partnerHotels } from "@/lib/partner-server";
 import { bookingsForHotels } from "@/lib/booking-server";
+import { requestInLocale } from "@/lib/reviews";
 
 export default async function PartnerBookings(props: PageProps<"/[locale]/partner/bookings">) {
   const { locale } = await props.params;
@@ -25,7 +26,7 @@ export default async function PartnerBookings(props: PageProps<"/[locale]/partne
               <p className="text-muted">{b.room ? (locale === "ja" ? b.room.nameJa : b.room.nameEn) : ""}</p>
               <p>{formatDate(b.checkIn, locale)} → {formatDate(b.checkOut, locale)} · {formatPrice(b.total, locale)}</p>
               <p className="text-muted">{b.email} · {b.phone}</p>
-              {b.requests && <p className="mt-1 rounded-lg bg-paper px-2 py-1 text-xs">{b.requests}</p>}
+              {requestInLocale(b, locale) && <p className="mt-1 rounded-lg bg-paper px-2 py-1 text-xs">{requestInLocale(b, locale)}</p>}
             </li>
           ))}
         </ul>

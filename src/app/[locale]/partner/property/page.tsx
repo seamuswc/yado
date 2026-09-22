@@ -52,7 +52,7 @@ export default async function PartnerPropertyPage(props: PageProps<"/[locale]/pa
           <section key={h.id} className="rounded-2xl bg-card border border-line p-4 space-y-3">
             <h2 className="font-semibold">{P.propertyTitle}</h2>
             <dl className={row}>
-              <dt className="text-muted">{P.hotelName}</dt><dd className="font-medium">{h.nameJa}</dd>
+              <dt className="text-muted">{P.hotelName}</dt><dd className="font-medium">{locale === "ja" ? h.nameJa : h.nameEn || h.nameJa}</dd>
               <dt className="text-muted">{P.type}</dt><dd>{type ? type[locale] : h.type}</dd>
               <dt className="text-muted">{P.city}</dt><dd>{city ? t(city.name, locale) : h.city}</dd>
               <dt className="text-muted">{P.address}</dt><dd>{h.address}</dd>

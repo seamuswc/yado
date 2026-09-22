@@ -30,10 +30,17 @@ export const hasJapanese = (s: string) => /[\u3040-\u30ff\u3400-\u9fff]/.test(s)
 let client: Anthropic | null | undefined;
 function getClient(): Anthropic | null {
   if (client !== undefined) return client;
+  const configured = !!(
+    process.env.ANTHROPIC_API_KEY
+    || process.env.ANTHROPIC_AUTH_TOKEN
+    || process.env.TRANSLATION_ENABLED === "1"
+  );
+  if (!configured) {
+    client = null;
+    return client;
+  }
   try {
-    client = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.TRANSLATION_ENABLED === "1"
-      ? new Anthropic()
-      : null;
+    client = new Anthropic();
   } catch {
     client = null;
   }
@@ -88,4 +95,33 @@ export async function translateListing(ja: ListingTextJa): Promise<{ en: Listing
 export async function translateListingToJa(en: ListingTextJa): Promise<{ ja: ListingTextEn; machine: boolean; error?: string }> {
   const r = await run(en, EN_TO_JA, "translateListingToJa");
   return { ja: r.out, machine: r.machine, error: r.error };
+}
+
+const Texts = z.object({ texts: z.array(z.string()) });
+
+/**
+ * Short free text (a guest review, a special request) into the other language. Returns null when
+ * translation is off or fails, so callers store nothing rather than a wrong guess.
+ */
+export async function translateTexts(texts: string[], to: "en" | "ja"): Promise<string[] | null> {
+  const c = getClient();
+  if (!c || texts.every((t) => !t.trim())) return null;
+  const system = to === "en"
+    ? "Translate each Japanese text into natural English for a hotel booking site. Keep the same number of texts in the same order; keep empty strings empty. Do not add or drop information. Return only the translations."
+    : "Translate each English text into natural Japanese (丁寧語) for a hotel booking site. Keep the same number of texts in the same order; keep empty strings empty. Do not add or drop information. Return only the translations.";
+  try {
+    const res = await c.messages.parse({
+      model: "claude-opus-5",
+      max_tokens: 4000,
+      output_config: { effort: "low", format: zodOutputFormat(Texts) },
+      system,
+      messages: [{ role: "user", content: JSON.stringify({ texts }) }],
+    });
+    const out = res.parsed_output?.texts;
+    if (res.stop_reason === "refusal" || !out || out.length !== texts.length) return null;
+    return out;
+  } catch (e) {
+    console.warn("translateTexts failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }

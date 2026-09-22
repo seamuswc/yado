@@ -10,6 +10,7 @@ import { onBookingConfirmed } from "./payments";
 import { demoPaymentsAllowed, getStripe } from "./stripe";
 import { track } from "./analytics";
 import { todayIso } from "./dates";
+import { pairRequestText } from "./reviews";
 
 export type GuestBookingInput = {
   locale: Locale;
@@ -39,6 +40,7 @@ export async function startGuestBooking(input: GuestBookingInput): Promise<
   if (nightsBetween(input.checkIn, input.checkOut) < 1 || input.checkIn < todayIso()) return { ok: false, error: "invalidDates" };
 
   expireStaleBookings();
+  const requestsPair = await pairRequestText(input.requests);
   const stripe = getStripe();
   // Production never confirms a stay without Stripe Checkout. A demo server confirms it so an assistant can finish the booking.
   if (!stripe && !demoPaymentsAllowed()) return { ok: false, error: "stripe_not_configured" };
@@ -48,7 +50,8 @@ export async function startGuestBooking(input: GuestBookingInput): Promise<
     booking = createBooking({
       hotelId: hotel.dbId, roomId: room.id, userId: input.userId,
       checkIn: input.checkIn, checkOut: input.checkOut, guests: input.guests,
-      firstName: input.firstName, lastName: input.lastName, email: input.email, phone: input.phone, requests: input.requests,
+      firstName: input.firstName, lastName: input.lastName, email: input.email, phone: input.phone,
+      requests: input.requests, requestsEn: requestsPair.en, requestsJa: requestsPair.ja,
       locale: input.locale, paymentMode: stripe ? "stripe" : "demo",
     });
   } catch (e) {

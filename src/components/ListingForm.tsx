@@ -95,8 +95,8 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
           </>
         )}
         <div className="grid grid-cols-2 gap-2">
-          <div><label className={label} htmlFor="phone">{P.phone}</label><input id="phone" name="phone" type="tel" required defaultValue={initial.phone} className={field} /></div>
-          <div><label className={label} htmlFor="licenseNumber">{P.license}</label><input id="licenseNumber" name="licenseNumber" required defaultValue={initial.licenseNumber} className={field} /></div>
+          <div><label className={label} htmlFor="phone">{P.phone}</label><input id="phone" name="phone" type="tel" defaultValue={initial.phone} className={field} /></div>
+          <div><label className={label} htmlFor="licenseNumber">{P.license}</label><input id="licenseNumber" name="licenseNumber" defaultValue={initial.licenseNumber} className={field} /></div>
         </div>
         <p className="text-xs text-muted -mt-1">{P.licenseHint}</p>
         <div className="grid grid-cols-2 gap-2">

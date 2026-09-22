@@ -55,7 +55,12 @@ export default async function ConfirmationPage(props: PageProps<"/[locale]/confi
           <dt className="text-muted">{dict.hotel.total}</dt><dd className="text-right font-bold">{formatPrice(booking.total, locale)}</dd>
           <dt className="text-muted">{dict.bookings.status}</dt><dd className="text-right">{dict.bookings[booking.status === "pending_payment" ? "pending" : booking.status]}</dd>
         </dl>
-        <p className="mt-3 text-sm text-muted">📍 {locale === "ja" ? booking.hotel.accessJa : booking.hotel.accessEn}</p>
+        {(locale === "ja" ? booking.hotel.accessJa : booking.hotel.accessEn) && (
+          <p className="mt-3 text-sm text-muted">📍 {locale === "ja" ? booking.hotel.accessJa : booking.hotel.accessEn}</p>
+        )}
+        {(locale === "ja" ? booking.requestsJa || booking.requests : booking.requestsEn || booking.requests) && (
+          <p className="mt-3 text-sm rounded-lg bg-paper border border-line px-3 py-2">{locale === "ja" ? booking.requestsJa || booking.requests : booking.requestsEn || booking.requests}</p>
+        )}
         <a href={mapsUrl({ latitude: booking.hotel.latitude, longitude: booking.hotel.longitude, name: { en: booking.hotel.nameEn, ja: booking.hotel.nameJa }, address: booking.hotel.address }, locale)}
           target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm text-primary underline">{dict.hotel.openMap} ↗</a>
       </div>
