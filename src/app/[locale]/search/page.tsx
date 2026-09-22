@@ -8,6 +8,7 @@ import { getCity, searchHotels, sortKeys, t, type SearchParams } from "@/lib/hot
 import { readStay, stayQuery } from "@/lib/stay";
 import { track } from "@/lib/analytics";
 import { todayIso } from "@/lib/dates";
+import { geocode } from "@/lib/geo";
 
 export default async function SearchPage(props: PageProps<"/[locale]/search">) {
   const { locale } = await props.params;
@@ -23,7 +24,8 @@ export default async function SearchPage(props: PageProps<"/[locale]/search">) {
   let minPrice = yen(one("minPrice"));
   let maxPrice = yen(one("maxPrice"));
   if (minPrice != null && maxPrice != null && minPrice > maxPrice) [minPrice, maxPrice] = [maxPrice, minPrice];
-  const results = searchHotels({ q, city, guests: stay.guests, sort, minPrice, maxPrice });
+  const point = q ? await geocode(q) : null;
+  const results = searchHotels({ q, city, guests: stay.guests, sort, minPrice, maxPrice, point: point ?? undefined });
   after(() => track("search", { locale, meta: { q, city, guests: stay.guests, sort, results: results.length } }));
 
   const base = new URLSearchParams();
@@ -42,45 +44,59 @@ export default async function SearchPage(props: PageProps<"/[locale]/search">) {
     sizeSmall: dict.search.sortSizeSmall,
   };
 
+  const formInitial = { q, city, minPrice: minPrice ? String(minPrice) : "", maxPrice: maxPrice ? String(maxPrice) : "", sort, ...stay };
+  const summary = (
+    <>
+      <span className="font-semibold">{city ? t(getCity(city)!.name, locale) : q || dict.search.anywhere}</span>
+      <span className="text-muted"> · {formatDate(stay.checkIn, locale)} → {formatDate(stay.checkOut, locale)} · {stay.guests}{locale === "ja" ? "名" : ` ${stay.guests === 1 ? dict.search.guest : dict.search.guestsPlural}`}{(minPrice || maxPrice) ? ` · ${minPrice ? formatPrice(minPrice, locale) : ""}${minPrice && maxPrice ? "–" : ""}${maxPrice ? formatPrice(maxPrice, locale) : ""}` : ""}</span>
+    </>
+  );
+
   return (
-    <div>
-      <div className="px-4 pt-3 pb-2 bg-card border-b border-line">
+    <div className="md:grid md:grid-cols-[22rem_minmax(0,1fr)] md:gap-6 md:px-4 md:pt-5">
+      {/* Phones: collapsible filter bar. Desktop: the same form stays open in a side column. */}
+      <div className="px-4 pt-3 pb-2 bg-card border-b border-line md:hidden">
         <details className="group">
           <summary className="list-none cursor-pointer flex items-center justify-between text-sm">
-            <span>
-              <span className="font-semibold">{city ? t(getCity(city)!.name, locale) : q || dict.search.anywhere}</span>
-              <span className="text-muted"> · {formatDate(stay.checkIn, locale)} → {formatDate(stay.checkOut, locale)} · {stay.guests}{locale === "ja" ? "名" : ` ${stay.guests === 1 ? dict.search.guest : dict.search.guestsPlural}`}{(minPrice || maxPrice) ? ` · ${minPrice ? formatPrice(minPrice, locale) : ""}${minPrice && maxPrice ? "–" : ""}${maxPrice ? formatPrice(maxPrice, locale) : ""}` : ""}</span>
-            </span>
+            <span>{summary}</span>
             <span className="text-primary group-open:rotate-180 transition">▾</span>
           </summary>
           <div className="pt-3">
-            <SearchForm locale={locale} dict={dict} initial={{ q, city, minPrice: minPrice ? String(minPrice) : "", maxPrice: maxPrice ? String(maxPrice) : "", sort, ...stay }} today={todayIso()} />
+            <SearchForm locale={locale} dict={dict} initial={formInitial} today={todayIso()} />
           </div>
         </details>
       </div>
+      <aside className="hidden md:block">
+        <div className="sticky top-[4.5rem] rounded-2xl bg-card border border-line p-4">
+          <SearchForm locale={locale} dict={dict} initial={formInitial} today={todayIso()} idPrefix="side-" />
+        </div>
+      </aside>
 
-      <div className="flex gap-2 overflow-x-auto px-4 py-3 hide-scrollbar">
-        {sortKeys.map((s) => {
-          const p = new URLSearchParams(base);
-          p.set("sort", s);
-          const active = s === sort;
-          return (
-            <Link key={s} href={`/${locale}/search?${p}`} scroll={false}
-              className={`shrink-0 text-sm px-3 py-2 min-h-10 inline-flex items-center rounded-full border ${active ? "bg-ink text-white border-ink" : "bg-card border-line text-ink"}`}>
-              {sortLabel[s]}
-            </Link>
-          );
-        })}
-      </div>
+      <div className="min-w-0">
+        <p className="hidden md:block text-sm mb-2">{summary}</p>
+        <div className="flex gap-2 overflow-x-auto px-4 md:px-0 py-3 md:pt-0 hide-scrollbar">
+          {sortKeys.map((s) => {
+            const p = new URLSearchParams(base);
+            p.set("sort", s);
+            const active = s === sort;
+            return (
+              <Link key={s} href={`/${locale}/search?${p}`} scroll={false}
+                className={`shrink-0 text-sm px-3 py-2 min-h-10 inline-flex items-center rounded-full border ${active ? "bg-ink text-white border-ink" : "bg-card border-line text-ink hover:bg-paper"}`}>
+                {sortLabel[s]}
+              </Link>
+            );
+          })}
+        </div>
 
-      <p className="px-4 pb-2 text-sm text-muted">{results.length} {results.length === 1 ? dict.search.resultOne : dict.search.results}</p>
-      <div className="px-4 space-y-3">
-        {results.length === 0 && (
-          <p className="rounded-xl bg-card border border-line p-6 text-center text-muted">{dict.search.noResults}</p>
-        )}
-        {results.map((h) => (
-          <HotelCard key={h.id} hotel={h} locale={locale} dict={dict} query={stayQuery(stay)} />
-        ))}
+        <p className="px-4 md:px-0 pb-2 text-sm text-muted">{results.length} {results.length === 1 ? dict.search.resultOne : dict.search.results}</p>
+        <div className="px-4 md:px-0 space-y-3 md:space-y-0 md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-4">
+          {results.length === 0 && (
+            <p className="rounded-xl bg-card border border-line p-6 text-center text-muted md:col-span-full">{dict.search.noResults}</p>
+          )}
+          {results.map((h) => (
+            <HotelCard key={h.id} hotel={h} locale={locale} dict={dict} query={stayQuery(stay)} />
+          ))}
+        </div>
       </div>
     </div>
   );

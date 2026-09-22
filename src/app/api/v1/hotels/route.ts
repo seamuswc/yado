@@ -1,6 +1,7 @@
 import { addDays, todayIso } from "@/lib/dates";
 import { searchHotels, sortKeys, type SearchParams } from "@/lib/hotels";
 import { cities } from "@/lib/hotels-shared";
+import { geocode } from "@/lib/geo";
 import { nightsBetween } from "@/lib/i18n";
 import { MAX_GUESTS } from "@/lib/stay";
 import { apiError, apiJson, limit } from "@/lib/api-http";
@@ -43,12 +44,21 @@ export async function GET(req: Request) {
   if (!sort) return apiError(400, "invalid_input", "sort must be recommended, priceLow, priceHigh, rating, size, or sizeSmall.");
 
   const q = url.searchParams.get("q") || url.searchParams.get("near") || "";
-  const hotels = searchHotels({ q, city, guests, sort, minPrice: minPricePerNight ?? undefined, maxPrice: maxPricePerNight ?? undefined })
+  const lat = Number(url.searchParams.get("lat"));
+  const lng = Number(url.searchParams.get("lng"));
+  const radiusRaw = url.searchParams.get("radiusKm");
+  const radiusKm = radiusRaw ? Number(radiusRaw) : undefined;
+  if (radiusKm != null && (!Number.isFinite(radiusKm) || radiusKm <= 0 || radiusKm > 100)) return apiError(400, "invalid_input", "radiusKm must be between 0 and 100.");
+  const point = Number.isFinite(lat) && Number.isFinite(lng) && url.searchParams.has("lat") && url.searchParams.has("lng")
+    ? { latitude: lat, longitude: lng }
+    : q ? await geocode(q) : null;
+  const hotels = searchHotels({ q, city, guests, sort, minPrice: minPricePerNight ?? undefined, maxPrice: maxPricePerNight ?? undefined, point: point ?? undefined, radiusKm })
     .map((h) => {
       const summary = presentHotelSummary(h, dates.checkIn, dates.checkOut);
       const rooms = narrowRooms(summary.rooms, { guests, maxPricePerNight, maxTotal });
       return {
         ...summary,
+        distanceKm: h.distanceKm ?? null,
         rooms,
         minPricePerNightJpy: rooms.length ? Math.min(...rooms.map((r) => r.pricePerNightJpy)) : summary.minPricePerNightJpy,
       };
@@ -61,6 +71,8 @@ export async function GET(req: Request) {
     checkOut: dates.checkOut ?? null,
     guests,
     near: q || null,
+    nearPoint: point,
+    radiusKm: point ? (radiusKm ?? 5) : null,
     minPricePerNight,
     maxPricePerNight,
     maxTotal,

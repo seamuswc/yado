@@ -29,23 +29,27 @@ export default async function Home(props: PageProps<"/[locale]">) {
 
   return (
     <div>
-      <section className="px-4 pt-5 pb-6 bg-gradient-to-b from-primary-soft to-paper">
-        <h1 className="text-2xl font-bold tracking-tight mb-1">{dict.tagline}</h1>
-        <p className="text-sm text-muted mb-4">🇯🇵 {locale === "ja" ? "全国の宿を英語・日本語で検索" : "Hotels, ryokan and hostels across Japan"}</p>
-        <div className="rounded-2xl bg-card border border-line p-3 shadow-sm">
-          <SearchForm locale={locale} dict={dict} initial={{ q: "", city: "", minPrice: "", maxPrice: "", sort: "recommended", ...stay }} today={todayIso()} />
+      <section className="px-4 pt-5 pb-6 md:pt-10 md:pb-10 bg-gradient-to-b from-primary-soft to-paper">
+        <div className="md:grid md:grid-cols-[1fr_minmax(0,26rem)] md:gap-10 md:items-center">
+          <div className="md:pb-6">
+            <h1 className="text-2xl md:text-4xl font-bold tracking-tight mb-1 md:mb-3">{dict.tagline}</h1>
+            <p className="text-sm md:text-base text-muted mb-4">🇯🇵 {locale === "ja" ? "全国の宿を英語・日本語で検索" : "Hotels, ryokan and hostels across Japan"}</p>
+          </div>
+          <div className="rounded-2xl bg-card border border-line p-3 md:p-4 shadow-sm">
+            <SearchForm locale={locale} dict={dict} initial={{ q: "", city: "", minPrice: "", maxPrice: "", sort: "recommended", ...stay }} today={todayIso()} />
+          </div>
         </div>
       </section>
 
-      <section className="pt-2 pb-4">
+      <section className="pt-2 pb-4 md:pt-6">
         <div className="flex items-baseline justify-between px-4 mb-2">
-          <h2 className="font-semibold">{dict.home.popular}</h2>
+          <h2 className="font-semibold md:text-lg">{dict.home.popular}</h2>
           <Link href={`/${locale}/search?${q}`} className="text-sm text-primary">{dict.home.seeAll}</Link>
         </div>
         <div className="flex gap-3 overflow-x-auto px-4 pb-1 hide-scrollbar snap-x">
           {activeCities.map((c) => (
-            <Link key={c.id} href={`/${locale}/search?city=${c.id}&${q}`} className="relative shrink-0 w-32 h-24 rounded-xl overflow-hidden snap-start">
-              <Image src={c.image} alt={t(c.name, locale)} fill sizes="128px" className="object-cover" />
+            <Link key={c.id} href={`/${locale}/search?city=${c.id}&${q}`} className="relative shrink-0 w-32 h-24 md:w-44 md:h-32 rounded-xl overflow-hidden snap-start">
+              <Image src={c.image} alt={t(c.name, locale)} fill sizes="(max-width: 768px) 128px, 176px" className="object-cover" />
               <span className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <span className="absolute bottom-2 left-2 text-white font-semibold drop-shadow">{t(c.name, locale)}</span>
             </Link>
@@ -54,15 +58,15 @@ export default async function Home(props: PageProps<"/[locale]">) {
       </section>
 
       <section className="px-4 pb-6">
-        <h2 className="font-semibold mb-2">{dict.home.featured}</h2>
-        <div className="space-y-3">
+        <h2 className="font-semibold md:text-lg mb-2">{dict.home.featured}</h2>
+        <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-3 md:gap-4">
           {featured.map((h) => (
             <HotelCard key={h.id} hotel={h} locale={locale} dict={dict} query={q} />
           ))}
         </div>
       </section>
 
-      <section className="px-4 pb-6">
+      <section className="px-4 pb-6 md:max-w-3xl">
         <PromptExample
           title={dict.prompt.guestTitle}
           intro={dict.prompt.guestIntro}
@@ -73,8 +77,8 @@ export default async function Home(props: PageProps<"/[locale]">) {
       </section>
 
       <section className="px-4 pb-6">
-        <h2 className="font-semibold mb-2">{dict.home.whyTitle}</h2>
-        <ul className="space-y-2">
+        <h2 className="font-semibold md:text-lg mb-2">{dict.home.whyTitle}</h2>
+        <ul className="space-y-2 md:max-w-3xl">
           {dict.home.why.map((w) => (
             <li key={w.title} className="rounded-xl bg-card border border-line p-3">
               <p className="font-medium">{w.title}</p>

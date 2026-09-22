@@ -9,6 +9,7 @@ const nav = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/registrations", label: "Registrations" },
   { href: "/admin/hotels", label: "Hotels" },
+  { href: "/admin/changes", label: "Changes" },
   { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/reviews", label: "Reviews" },
   { href: "/admin/users", label: "Users" },
@@ -19,6 +20,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getCurrentUser();
   if (!user || user.role !== "head_admin") redirect("/admin/login");
   const pending = db.select({ n: sql<number>`count(*)` }).from(schema.hotels).where(sql`status='pending'`).get()?.n ?? 0;
+  const openChanges = db.select({ n: sql<number>`count(*)` }).from(schema.changeRequests).where(sql`status='open'`).get()?.n ?? 0;
+  const badge = (href: string) => (href === "/admin/registrations" ? pending : href === "/admin/changes" ? openChanges : 0);
   return (
     <div className="flex-1 flex flex-col">
       <header className="sticky top-0 z-20 bg-card border-b border-line">
@@ -30,7 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <nav className="flex gap-1 overflow-x-auto hide-scrollbar text-sm">
             {nav.map((n) => (
               <Link key={n.href} href={n.href} className="px-3 py-1.5 rounded-full hover:bg-paper whitespace-nowrap">
-                {n.label}{n.href === "/admin/registrations" && pending > 0 && <span className="ml-1 rounded-full bg-primary text-white text-[11px] px-1.5">{pending}</span>}
+                {n.label}{badge(n.href) > 0 && <span className="ml-1 rounded-full bg-primary text-white text-[11px] px-1.5">{badge(n.href)}</span>}
               </Link>
             ))}
           </nav>

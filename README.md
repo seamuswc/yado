@@ -7,15 +7,16 @@ Mobile-first hotel booking site built with Next.js 16 (App Router), React 19, Ta
 ```bash
 npm install
 cp .env.example .env.local      # then edit (see "Configuration")
-npm run seed                    # creates the head admin, a demo partner, 8 demo hotels with reviews
+npm run seed                    # creates the head admin only
+npm run seed:demo               # optional: also a demo partner and 8 demo hotels with reviews
 npm run dev
 ```
 
 - Public site: http://localhost:3000 (redirects to `/en` or `/ja` from your browser language)
 - Admin: http://localhost:3000/admin — sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env.local` (defaults: `admin@example.com` / `change-me-now`). **Change the password after the first login** via "Forgot your password?".
-- Demo partner: `partner@example.com` / `partner-demo-1234` at `/ja/partner/login`
+- Demo partner (after `seed:demo`): `partner@example.com` / `partner-demo-1234` at `/ja/partner/login`
 
-In development, everything works with no external services configured ("demo mode"): payments are simulated, emails are stored in the admin **Emails** page instead of being sent (open sign-in / verification links from there), and translation is skipped. A production server does not simulate payments.
+In development, everything works with no external services configured ("demo mode"): emails are stored in the admin **Emails** page instead of being sent (open sign-in / verification links from there), translation is skipped, and payments show a "demo pay" button instead of Stripe. Listings follow the same path as production: pending → admin approval → annual fee → live. A production server does not simulate payments.
 
 ## What's in it
 

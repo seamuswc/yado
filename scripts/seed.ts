@@ -1,4 +1,8 @@
-/* Seeds the head admin, a demo partner and the demo inventory. Safe to re-run. */
+/*
+ * `npm run seed`       → head admin only (from ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME).
+ * `npm run seed:demo`  → also a demo partner and the demo hotels with reviews.
+ * Safe to re-run.
+ */
 import { eq } from "drizzle-orm";
 import { db, schema } from "../src/db";
 import { hashPassword } from "../src/lib/password";
@@ -23,6 +27,12 @@ if (!admin) {
   console.log(`✔ head admin created: ${adminEmail} / ${adminPassword}`);
 } else {
   console.log(`· head admin exists: ${adminEmail}`);
+}
+
+const withDemo = process.argv.includes("--demo");
+if (!withDemo) {
+  console.log("· demo hotels skipped (run `npm run seed:demo` to add them)");
+  process.exit(0);
 }
 
 let partner = findUserByEmail("partner@example.com");

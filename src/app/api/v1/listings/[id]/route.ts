@@ -1,6 +1,6 @@
 import { db, schema } from "@/db";
-import { eq } from "drizzle-orm";
-import { coerceListingBody, englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
+import { and, asc, eq } from "drizzle-orm";
+import { assumedDefaults, assumedNote, coerceListingBody, englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
 import { ownedHotel, presentOwnedListing } from "@/lib/api-present";
 import { keepRegisteredFields, keptNote, mergeWithRegistered } from "@/lib/listing-lock";
 import { savePartnerListing } from "@/lib/listing-write";
@@ -39,7 +39,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (!hotel) return apiError(404, "not_found", "No listing of yours with that id.");
     const body = await readJson(req);
     if ("response" in body) return body.response;
-    const merged = mergeWithRegistered(hotel, body.data);
+    const currentRooms = db.select().from(schema.rooms)
+      .where(and(eq(schema.rooms.hotelId, hotel.id), eq(schema.rooms.active, true)))
+      .orderBy(asc(schema.rooms.sortOrder)).all();
+    const merged = mergeWithRegistered(hotel, body.data, currentRooms);
     const parsed = listingBodySchema.safeParse(coerceListingBody(merged.body));
     if (!parsed.success) return zodError(parsed.error);
     if (parsed.data.account) return apiError(400, "invalid_input", "Do not send account when updating a listing.");
@@ -49,7 +52,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     const translation = await savePartnerListing(
       hotel,
       listing,
-      englishFromBody(parsed.data),
+      { ...englishFromBody(parsed.data), nameEn: hotel.nameEn },
       { retranslate: parsed.data.retranslate === true, fillEnglish: true },
       auth.actor.user.id,
     );
@@ -57,10 +60,12 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     const base = updated?.status === "pending"
       ? "Saved. The listing stays hidden until an admin approves it and the annual fee is paid."
       : "Saved.";
+    const assumed = assumedDefaults(merged.body);
     return apiJson({
       listing: updated ? presentOwnedListing(updated) : { id: hotel.id, translation },
       keptAsRegistered: kept,
-      message: base + keptNote(kept),
+      assumed,
+      message: base + keptNote(kept) + assumedNote(assumed),
     });
   });
 }

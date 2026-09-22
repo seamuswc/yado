@@ -10,9 +10,11 @@ type Props = {
   locale: Locale;
   dict: Dictionary;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  /** Signed-in partner adding a property: no account fields. */
+  signedIn?: boolean;
 };
 
-export default function RegisterForm({ locale, dict, action }: Props) {
+export default function RegisterForm({ locale, dict, action, signedIn = false }: Props) {
   const [state, formAction] = useActionState(action, {});
   const P = dict.partner;
   const field = "w-full rounded-xl border border-line bg-card px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -33,12 +35,14 @@ export default function RegisterForm({ locale, dict, action }: Props) {
       <input type="hidden" name="locale" value={locale} />
       <div className="hidden" aria-hidden><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
 
-      <section className="space-y-3">
-        <h2 className="font-semibold">{P.contactName}</h2>
-        <div><label className={label} htmlFor="contactName">{P.contactName}</label><input id="contactName" name="contactName" required className={field} autoComplete="name" /></div>
-        <div><label className={label} htmlFor="email">{P.email}</label><input id="email" name="email" type="email" required className={field} autoComplete="email" /></div>
-        <div><label className={label} htmlFor="password">{P.password}</label><input id="password" name="password" type="password" required minLength={10} className={field} autoComplete="new-password" /><p className="text-xs text-muted mt-1">{P.passwordHint}</p></div>
-      </section>
+      {!signedIn && (
+        <section className="space-y-3">
+          <h2 className="font-semibold">{P.contactName}</h2>
+          <div><label className={label} htmlFor="contactName">{P.contactName}</label><input id="contactName" name="contactName" required className={field} autoComplete="name" /></div>
+          <div><label className={label} htmlFor="email">{P.email}</label><input id="email" name="email" type="email" required className={field} autoComplete="email" /></div>
+          <div><label className={label} htmlFor="password">{P.password}</label><input id="password" name="password" type="password" required minLength={10} className={field} autoComplete="new-password" /><p className="text-xs text-muted mt-1">{P.passwordHint}</p></div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="font-semibold">{P.hotelName}</h2>

@@ -1,9 +1,12 @@
 import { requireAdminPage } from "@/lib/auth";
-import { sql } from "drizzle-orm";
+import Link from "next/link";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { reviewHotel } from "@/actions/admin";
 import { capacityAssessment, localeSplit, recentSamples, topPages, weeklyStats } from "@/lib/analytics";
+import { cities } from "@/lib/hotels-shared";
 import { BarChart, LineChart, Stat } from "@/components/admin/Charts";
-import { Badge, Card, PageTitle, Table, yen } from "@/components/admin/ui";
+import { Badge, Btn, Card, HotelLink, PageTitle, Table, fmtDate, yen } from "@/components/admin/ui";
 import { stripeConfigured } from "@/lib/stripe";
 import { translationAvailable } from "@/lib/translate";
 
@@ -18,7 +21,12 @@ export default async function Dashboard() {
   const delta = (a: number, b: number) => (b > 0 ? ((a - b) / b) * 100 : a > 0 ? 100 : null);
   const wk = (s: string) => { const d = new Date(s + "T00:00:00Z"); return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
 
-  const pendingHotels = db.select({ n: sql<number>`count(*)` }).from(schema.hotels).where(sql`status='pending'`).get()?.n ?? 0;
+  const pendingRows = db.select({ h: schema.hotels, u: schema.users })
+    .from(schema.hotels).leftJoin(schema.users, eq(schema.hotels.ownerId, schema.users.id))
+    .where(eq(schema.hotels.status, "pending"))
+    .orderBy(desc(schema.hotels.createdAt)).all();
+  const pendingHotels = pendingRows.length;
+  const roomCount = (id: string) => db.select({ n: sql<number>`count(*)` }).from(schema.rooms).where(and(eq(schema.rooms.hotelId, id), eq(schema.rooms.active, true))).get()?.n ?? 0;
   const liveHotels = db.select({ n: sql<number>`count(*)` }).from(schema.hotels).where(sql`status='approved' and paid_until > strftime('%Y-%m-%dT%H:%M:%fZ','now')`).get()?.n ?? 0;
   const feeDue = db.select({ n: sql<number>`count(*)` }).from(schema.hotels).where(sql`status='approved' and (paid_until is null or paid_until <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).get()?.n ?? 0;
   const guests = db.select({ n: sql<number>`count(*)` }).from(schema.users).where(sql`role='guest'`).get()?.n ?? 0;
@@ -32,6 +40,32 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <PageTitle sub="Weekly usage, revenue, and whether the server needs more headroom.">Dashboard</PageTitle>
+
+      <Card title={<span className="flex items-center gap-2">Pending listings <Badge tone={pendingHotels ? "warn" : "muted"}>{pendingHotels}</Badge></span>}>
+        {pendingHotels === 0 ? (
+          <p className="text-sm text-muted">Nothing waiting for review.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {pendingRows.map(({ h, u }) => (
+              <li key={h.id} className="py-3 first:pt-0 last:pb-0 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold"><HotelLink id={h.id} name={h.nameJa} /> <span className="text-muted font-normal text-sm">· {h.type} · {cities.find((c) => c.id === h.city)?.name.en ?? h.city}</span></p>
+                  <p className="text-sm text-muted truncate">{h.address}</p>
+                  <p className="text-xs text-muted">{u?.email ?? "—"} · {roomCount(h.id)} room type{roomCount(h.id) === 1 ? "" : "s"} · {h.images.length} photo{h.images.length === 1 ? "" : "s"} · submitted {fmtDate(h.createdAt)} · <Link className="underline" href={`/en/hotels/${h.slug}`} target="_blank">Preview as guest ↗</Link></p>
+                </div>
+                <form action={reviewHotel} className="flex items-center gap-2">
+                  <input type="hidden" name="hotelId" value={h.id} />
+                  <input type="hidden" name="back" value="/admin" />
+                  <input name="note" placeholder="Note to partner" className="w-44 rounded-lg border border-line px-2.5 py-1.5 text-sm" />
+                  <Btn tone="primary" name="decision" value="approve">✓ Approve</Btn>
+                  <Btn tone="danger" name="decision" value="reject">✕ Reject</Btn>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-muted mt-3">After approval the partner pays the annual fee from their dashboard, or you can mark it paid on the hotel page. Full queue: <Link className="underline" href="/admin/registrations">Registrations</Link>.</p>
+      </Card>
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Stat label="Visits this week" value={cur.visits.toLocaleString()} delta={delta(cur.visits, prev?.visits ?? 0)} hint={`${cur.visitors} unique visitors`} />

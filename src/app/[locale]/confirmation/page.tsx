@@ -24,7 +24,7 @@ export default async function ConfirmationPage(props: PageProps<"/[locale]/confi
 
   if (!booking) {
     return (
-      <div className="px-4 py-16 text-center">
+      <div className="px-4 py-16 text-center md:max-w-xl md:mx-auto">
         <p className="mb-4">{dict.confirmation.notFound}</p>
         <Link href={`/${locale}`} className="text-primary underline">{dict.confirmation.backHome}</Link>
       </div>
@@ -35,7 +35,7 @@ export default async function ConfirmationPage(props: PageProps<"/[locale]/confi
   const pending = booking.status === "pending_payment";
 
   return (
-    <div className="px-4 pt-8">
+    <div className="px-4 pt-8 md:max-w-xl md:mx-auto">
       <div className="text-center">
         <div className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center text-3xl ${pending ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{pending ? "⏳" : "✓"}</div>
         <h1 className="text-xl font-bold mt-4">{pending ? dict.bookings.pending : dict.confirmation.title}</h1>

@@ -9,7 +9,7 @@ export default async function VerifyPage(props: PageProps<"/[locale]/partner/ver
   const sp = await props.searchParams;
   const ok = sp.ok === "1";
   return (
-    <div className="px-4 py-16 text-center">
+    <div className="px-4 py-16 text-center md:max-w-xl md:mx-auto">
       <p className="text-4xl mb-3">{ok ? "✅" : "⚠️"}</p>
       <h1 className="text-lg font-semibold">{ok ? dict.partner.verifyTitle : dict.partner.verifyFailed}</h1>
       {ok && <p className="text-sm text-muted mt-2">{dict.partner.verifyBody}</p>}

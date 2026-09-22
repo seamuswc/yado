@@ -12,7 +12,7 @@ export function openApiDocument(origin: string) {
         "You are booking a hotel, or creating a hotel listing, for the person you are talking to.",
         "Guest example: book a room on these dates, for this budget, near this place. Call searchHotels with checkIn, checkOut, near, and maxPricePerNight or maxTotal, then createBooking. Never ask for the card number, expiry, or CVC. If the response has paymentUrl, send the guest there. If it has confirmationUrl, the stay is confirmed.",
         "Hotel example: add these rooms, prices, photos, and details to my listing. Send Authorization: Bearer and the hotel's yado_ key. First GET /api/v1/listings: the property the owner registered on the website is already there, so PUT its rooms, photos, description, amenities, station, and check-in times to /api/v1/listings/{id}. Name, type, city, address, and map pin were set at registration and are confirmed by Yado; the API keeps them as they are. POST /api/v1/listings only for an additional property. English is fine.",
-        "Money is yen. Dates are YYYY-MM-DD. Only live hotels can be booked. The createListing response says whether this listing is live. On a test server without Stripe a new listing goes live at once; on production it stays pending until an admin approves it and the annual fee is paid.",
+        "Money is yen. Dates are YYYY-MM-DD. Only live hotels can be booked. A new or updated listing stays pending until a Yado admin approves it and the owner pays the annual fee on the partner dashboard; the response's status and live fields say where it is.",
         "Send a unique Idempotency-Key header on POST and PUT so a retry does not create a second booking or listing.",
       ].join(" "),
     },
@@ -128,7 +128,10 @@ export function openApiDocument(origin: string) {
           summary: "Search live hotels. Call this before booking.",
           parameters: [
             { name: "q", in: "query", schema: { type: "string" }, description: "City, station, area, or hotel name." },
-            { name: "near", in: "query", schema: { type: "string" }, description: "Same as q. A station, neighbourhood, or city name, matched against the listing's name, area, station, address, and city. For 'cheapest near X' send near=X and sort=priceLow. If nothing matches, search the city instead." },
+            { name: "near", in: "query", schema: { type: "string" }, description: "A station, neighbourhood, landmark, or city name. Known places (Shinjuku, Gion-Shijo, Namba, Hakone-Yumoto, …) become a point and hotels within radiusKm of their map pin are returned, nearest first, with distanceKm; the name is also matched against the listing's text. For 'cheapest near X' send near=X and sort=priceLow. If nothing matches, search the city instead." },
+            { name: "lat", in: "query", schema: { type: "number" }, description: "With lng: search around this point instead of a place name." },
+            { name: "lng", in: "query", schema: { type: "number" } },
+            { name: "radiusKm", in: "query", schema: { type: "number", default: 5 }, description: "How far from the point still counts as near. Default 5 km." },
             { name: "city", in: "query", schema: { type: "string", enum: cityIds } },
             { name: "checkIn", in: "query", schema: { type: "string", format: "date" }, description: "YYYY-MM-DD. Send with checkOut to see which rooms are free and the stay total." },
             { name: "checkOut", in: "query", schema: { type: "string", format: "date" } },
@@ -196,7 +199,7 @@ export function openApiDocument(origin: string) {
             },
           },
           responses: {
-            "201": { description: "Booking created. Includes ref, status, paymentUrl, confirmationUrl, and viewToken." },
+            "201": { description: "Booking created. Includes ref, status, paymentUrl, confirmationUrl, viewToken, and statusUrl (GET it to see when status becomes confirmed after the guest pays)." },
             "400": { description: "Invalid input" },
             "409": { description: "Sold out" },
           },
@@ -206,10 +209,11 @@ export function openApiDocument(origin: string) {
         get: {
           operationId: "getBooking",
           tags: ["Bookings"],
-          summary: "Booking status. Pass the view token from createBooking, or the guest/partner API key.",
+          summary: "Booking status: pending_payment, confirmed, cancelled, or refunded. Pass the view token from createBooking, the guest's email, or the guest/partner API key.",
           parameters: [
             { name: "ref", in: "path", required: true, schema: { type: "string" } },
             { name: "token", in: "query", schema: { type: "string" }, description: "viewToken returned when the booking was created." },
+            { name: "email", in: "query", schema: { type: "string" }, description: "The guest's email, when the view token is not to hand." },
           ],
           responses: { "200": { description: "Booking" }, "404": { description: "Not found" } },
         },
@@ -251,7 +255,7 @@ export function openApiDocument(origin: string) {
           operationId: "updateListing",
           tags: ["Listings"],
           summary: "Add or replace rooms, photos, description, amenities, station, and check-in times on a listing.",
-          description: "Send only what you are adding; name, type, city, and address are filled from the stored listing. Those fields and the map pin were set at registration and confirmed by Yado, so the API keeps the stored values and lists any you tried to change in keptAsRegistered. Rooms replace the current set: include the id of any room you want to keep.",
+          description: "A partial update: send only what changes. Anything left out (rooms, photos, description, amenities, times) stays as it is. Name, type, city, address, and map pin were set at registration and confirmed by Yado, so the API keeps the stored values and lists any you tried to change in keptAsRegistered. When you do send rooms, they replace the current set: include the id of any room you want to keep, and GET the listing first to see the ids.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: "id", in: "path", required: true, schema: { type: "string" } },

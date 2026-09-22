@@ -5,6 +5,8 @@ import type { BookingWithHotel } from "./booking-server";
 import { availabilityForHotel } from "./booking-server";
 import { isLive, minPrice, type Hotel } from "./hotels";
 import { nightsBetween } from "./i18n";
+import { APP_URL } from "./email";
+import { absoluteImage } from "./uploads";
 
 export const LISTING_NEXT = "This listing is not public yet. Confirm the partner email, wait for an admin to approve it, then pay the annual fee. Only live listings appear in search.";
 
@@ -66,7 +68,7 @@ export function presentHotelDetail(hotel: Hotel, checkIn?: string, checkOut?: st
     access: hotel.access,
     address: hotel.address,
     amenities: hotel.amenities,
-    images: hotel.images,
+    images: hotel.images.map((u) => absoluteImage(u, APP_URL)),
     latitude: hotel.latitude,
     longitude: hotel.longitude,
   };
@@ -119,7 +121,7 @@ export function presentOwnedListing(hotel: schema.Hotel) {
     checkInTime: hotel.checkInTime,
     checkOutTime: hotel.checkOutTime,
     amenities: hotel.amenities,
-    images: hotel.images,
+    images: hotel.images.map((u) => absoluteImage(u, APP_URL)),
     latitude: hotel.latitude,
     longitude: hotel.longitude,
     rooms: rooms.map((r) => ({

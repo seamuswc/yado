@@ -19,6 +19,18 @@ export function activeRoomCounts(hotelIds: string[]): Map<string, number> {
   return new Map(rows.map((r) => [r.hotelId, Number(r.n)]));
 }
 
+/** Active room types per hotel, for the dashboard card. */
+export function activeRoomsByHotel(hotelIds: string[]): Map<string, schema.Room[]> {
+  const out = new Map<string, schema.Room[]>();
+  if (!hotelIds.length) return out;
+  const rows = db.select().from(schema.rooms)
+    .where(and(inArray(schema.rooms.hotelId, hotelIds), eq(schema.rooms.active, true)))
+    .orderBy(schema.rooms.pricePerNight)
+    .all();
+  for (const r of rows) out.set(r.hotelId, [...(out.get(r.hotelId) ?? []), r]);
+  return out;
+}
+
 export function hotelStatusLabel(h: schema.Hotel, d: Dictionary): { label: string; tone: "ok" | "warn" | "bad" | "muted" } {
   if (h.status === "pending") return { label: d.partner.statusPending, tone: "warn" };
   if (h.status === "rejected") return { label: d.partner.statusRejected, tone: "bad" };

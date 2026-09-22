@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Locale } from "./i18n";
 import { nowIso } from "./ids";
@@ -126,6 +126,17 @@ export function listLiveHotels(): Hotel[] {
   return rows.map((h) => toHotel(h, rooms.get(h.id) ?? [])).filter((h) => h.rooms.length > 0);
 }
 
+/**
+ * Any listing by slug or id, live or not, for the owner's and admin's preview of the public page.
+ * Returns the raw row too so the caller can check ownership.
+ */
+export function getHotelForPreview(slugOrId: string): { hotel: Hotel; row: schema.Hotel } | undefined {
+  const h = db.select().from(schema.hotels).where(or(eq(schema.hotels.slug, slugOrId), eq(schema.hotels.id, slugOrId))).get();
+  if (!h) return undefined;
+  const rooms = db.select().from(schema.rooms).where(eq(schema.rooms.hotelId, h.id)).all();
+  return { hotel: toHotel(h, rooms), row: h };
+}
+
 export function getLiveHotel(slug: string): Hotel | undefined {
   const h = db.select().from(schema.hotels).where(and(eq(schema.hotels.slug, slug), liveHotelFilter())).get();
   if (!h) return undefined;
@@ -141,24 +152,47 @@ export type SearchParams = {
   minPrice?: number;
   maxPrice?: number;
   sort?: SortKey;
+  /** When set, "near" means within radiusKm of this point (matched by pin), not just a word match. */
+  point?: { latitude: number; longitude: number };
+  radiusKm?: number;
 };
 
-export function searchHotels(params: SearchParams): Hotel[] {
+export type SearchHit = Hotel & { distanceKm?: number };
+
+function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+export function searchHotels(params: SearchParams): SearchHit[] {
   const q = (params.q ?? "").trim().toLowerCase();
   const guests = params.guests ?? 1;
   let min = params.minPrice;
   let max = params.maxPrice;
   if (min != null && max != null && min > max) [min, max] = [max, min];
-  let list = listLiveHotels().flatMap((h) => {
+  const radius = params.radiusKm ?? 5;
+  let list: SearchHit[] = listLiveHotels().flatMap((h) => {
     if (params.city && h.city !== params.city) return [];
+    let distanceKm: number | undefined;
+    if (params.point && h.latitude != null && h.longitude != null) {
+      distanceKm = Math.round(haversineKm(params.point, { latitude: h.latitude, longitude: h.longitude }) * 10) / 10;
+    }
     if (q) {
       const cityName = getCity(h.city);
       const hay = [h.name.en, h.name.ja, h.area.en, h.area.ja, h.station.en, h.station.ja, h.address, h.city, cityName?.name.en ?? "", cityName?.name.ja ?? ""].join(" ").toLowerCase();
-      if (!hay.includes(q)) return [];
+      const wordHit = hay.includes(q);
+      const nearHit = distanceKm != null && distanceKm <= radius;
+      if (!wordHit && !nearHit) return [];
     }
     const rooms = h.rooms.filter((r) => r.sleeps >= guests && (min == null || r.pricePerNight >= min) && (max == null || r.pricePerNight <= max));
-    return rooms.length ? [{ ...h, rooms }] : [];
+    return rooms.length ? [{ ...h, rooms, distanceKm }] : [];
   });
+  const byDistance = (a: SearchHit, b: SearchHit) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity);
+  if (params.point && (!params.sort || params.sort === "recommended")) return [...list].sort(byDistance);
   switch (params.sort) {
     case "priceLow": list = [...list].sort((a, b) => minPrice(a) - minPrice(b)); break;
     case "priceHigh": list = [...list].sort((a, b) => minPrice(b) - minPrice(a)); break;

@@ -1,4 +1,5 @@
 import { clientIp } from "@/lib/auth";
+import { APP_URL } from "@/lib/email";
 import { bookingsForGuest, bookingsForHotels, getBookingById } from "@/lib/booking-server";
 import { partnerHotels } from "@/lib/partner-server";
 import { bookingBodySchema } from "@/lib/api-schemas";
@@ -78,13 +79,15 @@ export async function POST(req: Request) {
         message: "This demo server has no Stripe key, so no card was charged and the stay is confirmed. Send the guest to confirmationUrl. On a live server you would send them to paymentUrl instead, and you still must not ask for the card number.",
       }, 201);
     }
+    const statusUrl = `${APP_URL}/api/v1/bookings/${booking.ref}?token=${encodeURIComponent(result.viewToken ?? "")}`;
     return apiJson({
       ...presentBooking(booking),
       paymentUrl: result.paymentUrl,
       confirmationUrl,
       viewToken: result.viewToken,
+      statusUrl,
       cardEntry: "stripe_checkout",
-      message: "The room is held, not paid. Do not ask for the card number, expiry, or CVC. Send the guest to paymentUrl. They enter the card on Stripe. The booking stays pending_payment until Stripe confirms payment.",
+      message: "The room is held, not paid. Do not ask for the card number, expiry, or CVC. Send the guest to paymentUrl. They enter the card on Stripe. The booking stays pending_payment until Stripe confirms payment; GET statusUrl to see when it becomes confirmed, and the guest gets a confirmation email.",
     }, 201);
   });
 }

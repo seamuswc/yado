@@ -9,52 +9,24 @@ import { audit, clientIp, consumeToken, createSession, findUserByEmail, getCurre
 import { APP_URL, sendEmail, templates } from "@/lib/email";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { cities } from "@/lib/hotels";
-import { nowIso } from "@/lib/ids";
+import { newId, nowIso } from "@/lib/ids";
 import { demoPaymentsAllowed, getStripe, PARTNER_ANNUAL_FEE } from "@/lib/stripe";
 import { applyFeePayment, subscriptionPeriodEnd } from "@/lib/payments";
 import { isLive } from "@/lib/hotels";
-import { ListingError, registerPartnerWithListing, savePartnerListing, type NormalizedListing } from "@/lib/listing-write";
+import { keepRegisteredFields } from "@/lib/listing-lock";
+import { coerceListingBody, englishFromBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
+import { isUploadUrl, MAX_PHOTOS_PER_LISTING } from "@/lib/uploads";
+import { addListingForPartner, ListingError, registerPartnerWithListing, savePartnerListing, type NormalizedListing } from "@/lib/listing-write";
 import { MapsLinkError, resolveMapsLink } from "@/lib/maps-link";
 import type { ActionState } from "./auth";
 
 function loc(v: unknown): Locale { return typeof v === "string" && isLocale(v) ? v : "ja"; }
 
-const roomSchema = z.object({
-  id: z.string().optional(),
-  nameJa: z.string().trim().min(1).max(80),
-  descriptionJa: z.string().trim().max(300).default(""),
-  nameEn: z.string().trim().max(80).optional(),
-  descriptionEn: z.string().trim().max(300).optional(),
-  sleeps: z.coerce.number().int().min(1).max(12),
-  sizeSqm: z.coerce.number().int().min(0).max(1000).optional(),
-  pricePerNight: z.coerce.number().int().min(500).max(5_000_000),
-  quantity: z.coerce.number().int().min(1).max(500),
-  breakfast: z.coerce.boolean().default(false),
-  refundable: z.coerce.boolean().default(true),
-});
-
-const listingSchema = z.object({
-  nameJa: z.string().trim().min(1).max(120),
-  type: z.enum(["hotel", "ryokan", "business", "hostel"]),
-  city: z.string().refine((c) => cities.some((x) => x.id === c)),
-  address: z.string().trim().min(3).max(300),
-  phone: z.string().trim().min(5).max(40),
-  licenseNumber: z.string().trim().min(2).max(80),
-  stationJa: z.string().trim().max(80).default(""),
-  areaJa: z.string().trim().max(120).default(""),
-  descriptionJa: z.string().trim().min(10).max(3000),
-  accessJa: z.string().trim().max(500).default(""),
-  checkInTime: z.string().regex(/^\d{2}:\d{2}$/).default("15:00"),
-  checkOutTime: z.string().regex(/^\d{2}:\d{2}$/).default("11:00"),
-  amenities: z.array(z.string()).default([]),
-  images: z.string().default(""),
-  latitude: z.coerce.number().min(-90).max(90).optional(),
-  longitude: z.coerce.number().min(-180).max(180).optional(),
-  rooms: z.array(roomSchema).min(1).max(30),
-});
-
-/** Parses the flat FormData of the listing form (rooms are indexed: rooms[0][nameJa]). */
-function parseListing(formData: FormData) {
+/**
+ * Turns the flat FormData of the listing form (rooms are indexed: rooms[0][nameJa]) into the same
+ * object shape the API accepts, so the form and the API share one validator (listingBodySchema).
+ */
+function listingFromForm(formData: FormData) {
   const obj: Record<string, unknown> = {};
   const rooms: Record<number, Record<string, unknown>> = {};
   for (const [k, v] of formData.entries()) {
@@ -65,25 +37,25 @@ function parseListing(formData: FormData) {
   }
   obj.rooms = Object.keys(rooms).sort((a, b) => Number(a) - Number(b)).map((i) => {
     const r = rooms[Number(i)];
+    // Checkboxes are absent when unchecked, so decide the booleans here rather than let the API default them.
     return { ...r, breakfast: r.breakfast === "on", refundable: r.refundable === "on", sizeSqm: r.sizeSqm === "" ? undefined : r.sizeSqm };
   });
-  if (obj.latitude === "") delete obj.latitude;
-  if (obj.longitude === "") delete obj.longitude;
-  return listingSchema.safeParse(obj);
+  obj.images = parseImages(String(obj.images ?? ""));
+  for (const key of ["latitude", "longitude"] as const) {
+    const n = Number(obj[key]);
+    if (obj[key] === "" || obj[key] == null || !Number.isFinite(n)) delete obj[key]; else obj[key] = n;
+  }
+  for (const key of ["retranslate", "hotelId", "website", "account"]) delete obj[key];
+  const parsed = listingBodySchema.safeParse(coerceListingBody(obj));
+  if (!parsed.success) return parsed;
+  // The website form asks for a phone and licence; the API lets an assistant add them later.
+  const strict = z.object({ phone: z.string().min(5), licenseNumber: z.string().min(2) }).safeParse(parsed.data);
+  if (!strict.success) return strict;
+  return parsed;
 }
 
 function parseImages(raw: string): string[] {
-  return raw.split(/\r?\n/).map((s) => s.trim()).filter((s) => /^https:\/\/\S+$/.test(s)).slice(0, 12);
-}
-
-function normalizedFromForm(L: z.infer<typeof listingSchema>): NormalizedListing {
-  return {
-    ...L,
-    images: parseImages(L.images),
-    latitude: L.latitude ?? null,
-    longitude: L.longitude ?? null,
-    rooms: L.rooms.map((r) => ({ ...r, sizeSqm: r.sizeSqm ?? null })),
-  };
+  return raw.split(/\r?\n/).map((s) => s.trim()).filter((s) => /^https:\/\/\S+$/.test(s) || isUploadUrl(s)).slice(0, MAX_PHOTOS_PER_LISTING);
 }
 
 // ---------- registration ----------
@@ -168,6 +140,88 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
   return { ok: true, message: d.partner.registeredBody.replace("{email}", user.email) };
 }
 
+const propertySchema = z.object({
+  nameJa: z.string().trim().min(1).max(120),
+  type: z.enum(["hotel", "ryokan", "business", "hostel"]),
+  city: z.string().refine((c) => cities.some((x) => x.id === c)),
+  address: z.string().trim().min(3).max(300),
+  mapsUrl: z.string().trim().min(8).max(2000),
+});
+
+/** A signed-in partner registers another (or a first) property. Same fields as sign-up, minus the account. */
+export async function addProperty(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const locale = loc(formData.get("locale"));
+  const d = getDictionary(locale);
+  const user = await getCurrentUser();
+  if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
+  if (String(formData.get("website") ?? "") !== "") return { ok: true, message: d.partner.propertyAdded }; // bot: pretend success
+  if (formData.get("agree") !== "on") return { error: d.book.mustAgree };
+  const short = propertySchema.safeParse(Object.fromEntries(formData));
+  if (!short.success) return { error: d.book.required };
+  let pin: { latitude: number | null; longitude: number | null };
+  try {
+    pin = await resolveMapsLink(short.data.mapsUrl);
+  } catch (e) {
+    if (e instanceof MapsLinkError) return { error: d.partner.mapsInvalid };
+    throw e;
+  }
+  await addListingForPartner(user.id, {
+    nameJa: short.data.nameJa,
+    nameEn: short.data.nameJa,
+    type: short.data.type,
+    city: short.data.city,
+    address: short.data.address,
+    phone: "",
+    licenseNumber: "",
+    stationJa: "",
+    areaJa: "",
+    descriptionJa: "",
+    accessJa: "",
+    checkInTime: "15:00",
+    checkOutTime: "11:00",
+    amenities: [],
+    images: [],
+    latitude: pin.latitude,
+    longitude: pin.longitude,
+    rooms: [],
+  });
+  revalidatePath(`/${locale}/partner`);
+  redirect(`/${locale}/partner`);
+}
+
+const changeRequestSchema = z.object({
+  hotelId: z.string().min(1),
+  field: z.enum(["name", "type", "city", "address", "pin", "other"]),
+  requested: z.string().trim().min(1).max(500),
+  reason: z.string().trim().max(1000).default(""),
+});
+
+/** A partner asks Yado to change a registered detail. Lands in the admin queue; Yado applies it. */
+export async function requestChange(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const locale = loc(formData.get("locale"));
+  const d = getDictionary(locale);
+  const user = await getCurrentUser();
+  if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
+  if (!rateLimit(`change-request:${user.id}`, 10, 60 * 60_000)) return { error: d.auth.rateLimited };
+  const parsed = changeRequestSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: d.book.required };
+  const hotel = ownedHotel(user.id, parsed.data.hotelId);
+  if (!hotel) return { error: d.book.required };
+  const open = db.select({ id: schema.changeRequests.id }).from(schema.changeRequests)
+    .where(and(eq(schema.changeRequests.hotelId, hotel.id), eq(schema.changeRequests.status, "open"))).all();
+  if (open.length >= 5) return { error: d.partner.changeTooMany };
+  const { field, requested, reason } = parsed.data;
+  db.insert(schema.changeRequests).values({ id: newId("cr_"), hotelId: hotel.id, userId: user.id, field, requested, reason }).run();
+  audit(user.id, "partner.change_requested", hotel.id, parsed.data.field);
+  const admins = db.select().from(schema.users).where(eq(schema.users.role, "head_admin")).all();
+  for (const a of admins) {
+    await sendEmail(a.email, `[Yado] Change request: ${hotel.nameJa} (${parsed.data.field})`,
+      `${user.name} <${user.email}> asks to change ${parsed.data.field} of "${hotel.nameJa}" to:\n\n${parsed.data.requested}\n\n${parsed.data.reason ? `Reason: ${parsed.data.reason}\n\n` : ""}Review: ${APP_URL}/admin/changes`);
+  }
+  revalidatePath(`/${locale}/partner/property`);
+  return { ok: true, message: d.partner.changeSent };
+}
+
 export async function verifyPartnerEmail(token: string): Promise<boolean> {
   const userId = consumeToken(token, "verify_email")?.userId ?? null;
   if (!userId) return false;
@@ -185,14 +239,6 @@ function ownedHotel(userId: string, hotelId: string) {
   return db.select().from(schema.hotels).where(and(eq(schema.hotels.id, hotelId), eq(schema.hotels.ownerId, userId))).get();
 }
 
-const editSchema = listingSchema.extend({
-  nameEn: z.string().trim().max(120).default(""),
-  areaEn: z.string().trim().max(120).default(""),
-  descriptionEn: z.string().trim().max(3000).default(""),
-  accessEn: z.string().trim().max(500).default(""),
-  stationEn: z.string().trim().max(80).default(""),
-});
-
 export async function updateListing(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const locale = loc(formData.get("locale"));
   const d = getDictionary(locale);
@@ -204,13 +250,14 @@ export async function updateListing(_prev: ActionState, formData: FormData): Pro
     : ownedHotel(user.id, hotelId);
   if (!hotel) return { error: d.common.error };
 
-  const base = parseListing(formData);
+  const base = listingFromForm(formData);
   if (!base.success) return { error: `${d.book.required}: ${base.error.issues[0].path.join(".")}` };
-  const extraParsed = editSchema.pick({ nameEn: true, areaEn: true, descriptionEn: true, accessEn: true, stationEn: true }).safeParse(Object.fromEntries(formData));
-  if (!extraParsed.success) return { error: `${d.book.required}: ${extraParsed.error.issues[0].path.join(".")}` };
-  const extra = extraParsed.data;
   const retranslate = formData.get("retranslate") === "1";
-  await savePartnerListing(hotel, normalizedFromForm(base.data), extra, { retranslate, fillEnglish: false }, user.id);
+  // Partners keep what they registered; only Yado changes name, type, city, address, and pin.
+  const fromForm = listingFromBody(base.data);
+  const normalized = user.role === "partner" ? keepRegisteredFields(hotel, fromForm).listing : fromForm;
+  const english = user.role === "partner" ? { ...englishFromBody(base.data), nameEn: hotel.nameEn } : englishFromBody(base.data);
+  await savePartnerListing(hotel, normalized, english, { retranslate, fillEnglish: false }, user.id);
   revalidatePath(`/${locale}/partner`);
   return { ok: true, message: d.partner.saved };
 }

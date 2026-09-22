@@ -17,7 +17,7 @@ export default async function PartnerApiPage(props: PageProps<"/[locale]/partner
   const firstKey = keys.find((k) => k.token)?.token ?? null;
   const promptText = dict.prompt.hotelText.replace("{api}", `${APP_URL}/api/v1`).replace("{key}", firstKey ?? "yado_…");
   return (
-    <div className="px-4 pt-5 space-y-4">
+    <div className="px-4 pt-5 space-y-4 md:max-w-2xl md:mx-auto">
       <PartnerTabs locale={locale} dict={dict} current="api" />
       <ApiKeyPanel
         audience="partner"

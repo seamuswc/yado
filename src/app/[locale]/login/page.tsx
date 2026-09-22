@@ -13,7 +13,7 @@ export default async function LoginPage(props: PageProps<"/[locale]/login">) {
   const sp = await props.searchParams;
   const email = typeof sp.email === "string" ? sp.email : "";
   return (
-    <div className="px-4 pt-6 space-y-4">
+    <div className="px-4 pt-6 space-y-4 md:max-w-md md:mx-auto md:pt-12">
       <h1 className="text-xl font-bold">{dict.auth.signIn}</h1>
       <MagicLinkForm locale={locale} dict={dict} defaultEmail={email} />
       <p className="text-sm text-muted text-center">

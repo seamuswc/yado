@@ -5,7 +5,8 @@ import { amenityKeys, cities, type AmenityKey } from "./hotels-shared";
 import type { NormalizedListing } from "./listing-write";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => addDays(s, 0) === s, "invalid date");
-const httpsUrl = z.string().trim().regex(/^https:\/\/\S+$/, "must be an https URL");
+/** Photos are https links, or photos the owner uploaded on the partner site (/uploads/…). */
+const photoUrl = z.string().trim().refine((s) => /^https:\/\/\S+$/.test(s) || /^\/uploads\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.jpg$/.test(s), "must be an https URL");
 
 export const roomBodySchema = z.object({
   id: z.string().min(1).max(40).optional(),
@@ -40,7 +41,7 @@ export const listingBodySchema = z.object({
   checkInTime: z.string().regex(/^\d{2}:\d{2}$/).default("15:00"),
   checkOutTime: z.string().regex(/^\d{2}:\d{2}$/).default("11:00"),
   amenities: z.array(z.string()).default([]),
-  images: z.array(httpsUrl).max(12).default([]),
+  images: z.array(photoUrl).max(12).default([]),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
   rooms: z.array(roomBodySchema).min(1).max(30),
@@ -141,9 +142,35 @@ function isBareCity(v: unknown): boolean {
   return cities.some((c) => c.id === s || c.name.en.toLowerCase() === s || c.name.ja === raw);
 }
 
+/** Uploaded photos come back from GET as absolute URLs; accept them as the stored /uploads path. */
 function urlList(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string");
+  return v.filter((x): x is string => typeof x === "string").map((s) => {
+    const m = s.match(/^https?:\/\/[^/]+(\/uploads\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.jpg)$/);
+    return m ? m[1] : s;
+  });
+}
+
+const DEFAULT_ROOM_NAME = "Standard room";
+
+/**
+ * Defaults the API filled in because the caller did not say. Returned to the assistant so it can ask the owner
+ * instead of silently publishing a guess (a refundable room that is not, for example).
+ */
+export function assumedDefaults(input: unknown): string[] {
+  if (!input || typeof input !== "object") return [];
+  const v = input as Record<string, unknown>;
+  const out: string[] = [];
+  const rooms = Array.isArray(v.rooms) && v.rooms.length ? v.rooms : [v];
+  const unstated = (key: string) => rooms.some((r) => !r || typeof r !== "object" || boolOf((r as Record<string, unknown>)[key]) === undefined);
+  if (unstated("refundable")) out.push("refundable: true (free cancellation). Send refundable: false per room if bookings are non-refundable.");
+  if (unstated("breakfast")) out.push("breakfast: false. Send breakfast: true per room if it is included.");
+  if (rooms.some((r) => r && typeof r === "object" && !textOf((r as Record<string, unknown>).nameJa) && !textOf((r as Record<string, unknown>).name) && !textOf((r as Record<string, unknown>).nameEn) && !textOf((r as Record<string, unknown>).roomName))) out.push(`room name: "${DEFAULT_ROOM_NAME}".`);
+  return out;
+}
+
+export function assumedNote(assumed: string[]): string {
+  return assumed.length ? ` Not stated, so assumed: ${assumed.join(" ")} Confirm these with the owner.` : "";
 }
 
 /** Accepts the short brief an assistant actually sends: name, place, nightly price, photos. */
@@ -163,7 +190,7 @@ export function coerceListingBody(input: unknown): unknown {
   const rooms = given.length > 0 ? given.map((item) => {
     if (!item || typeof item !== "object") return item;
     const r = item as Record<string, unknown>;
-    const roomName = textOf(r.nameJa) || textOf(r.name) || textOf(r.nameEn) || name || "Room";
+    const roomName = textOf(r.nameJa) || textOf(r.name) || textOf(r.nameEn) || DEFAULT_ROOM_NAME;
     const roomText = textOf(r.descriptionJa) || textOf(r.description) || textOf(r.descriptionEn);
     return {
       ...r,
@@ -179,8 +206,8 @@ export function coerceListingBody(input: unknown): unknown {
       refundable: boolOf(r.refundable) ?? true,
     };
   }) : [{
-    nameJa: textOf(v.roomName) || textOf(v.room) || name || "Room",
-    nameEn: textOf(v.roomName) || textOf(v.room) || nameEn || "Room",
+    nameJa: textOf(v.roomName) || textOf(v.room) || DEFAULT_ROOM_NAME,
+    nameEn: textOf(v.roomName) || textOf(v.room) || DEFAULT_ROOM_NAME,
     sleeps: intOf(v.sleeps ?? v.guests) ?? 2,
     quantity: intOf(v.quantity ?? v.roomCount) ?? 1,
     pricePerNight: intOf(v.pricePerNight ?? v.price ?? v.pricePerNightJpy),

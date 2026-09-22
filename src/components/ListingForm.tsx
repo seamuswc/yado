@@ -5,6 +5,7 @@ import type { Dictionary, Locale } from "@/lib/i18n";
 import { amenityKeys, cities, typeLabel, type AmenityKey } from "@/lib/hotels-shared";
 import type { ActionState } from "@/actions/auth";
 import SubmitButton from "./SubmitButton";
+import PhotoUploader from "./PhotoUploader";
 
 import { emptyRoom, type ListingDraft, type RoomDraft } from "@/lib/listing-draft";
 
@@ -12,9 +13,12 @@ type Props = {
   locale: Locale; dict: Dictionary; initial: ListingDraft; mode: "register" | "edit";
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   translationAvailable: boolean;
+  /** Partners see name, type, city, address, and pin as set at registration; only Yado changes them. */
+  lockRegistered?: boolean;
+  contactEmail?: string;
 };
 
-export default function ListingForm({ locale, dict, initial, mode, action, translationAvailable }: Props) {
+export default function ListingForm({ locale, dict, initial, mode, action, translationAvailable, lockRegistered = false, contactEmail = "" }: Props) {
   const [state, formAction] = useActionState(action, {});
   const [rooms, setRooms] = useState<(RoomDraft & { key: string })[]>(() => (initial.rooms.length ? initial.rooms : [{ ...emptyRoom }]).map((r, i) => ({ ...r, key: r.id ?? `init-${i}` })));
   const P = dict.partner;
@@ -49,20 +53,47 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
         </section>
       )}
 
+      {lockRegistered && (
+        <section className="rounded-2xl bg-paper border border-line p-3 space-y-2">
+          <h2 className="font-semibold text-sm">{P.propertyTitle}</h2>
+          <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-muted">{P.hotelName}</dt><dd className="font-medium">{initial.nameJa}</dd>
+            <dt className="text-muted">{P.type}</dt><dd>{typeLabel[initial.type as keyof typeof typeLabel]?.[locale] ?? initial.type}</dd>
+            <dt className="text-muted">{P.city}</dt><dd>{cities.find((c) => c.id === initial.city)?.name[locale] ?? initial.city}</dd>
+            <dt className="text-muted">{P.address}</dt><dd>{initial.address}</dd>
+          </dl>
+          <p className="text-xs text-muted">
+            {P.propertyLocked.split("{email}")[0]}
+            <a href={`mailto:${contactEmail}`} className="text-primary underline">{contactEmail}</a>
+            {P.propertyLocked.split("{email}")[1]}
+          </p>
+          <input type="hidden" name="nameJa" value={initial.nameJa} />
+          <input type="hidden" name="type" value={initial.type} />
+          <input type="hidden" name="city" value={initial.city} />
+          <input type="hidden" name="address" value={initial.address} />
+          {initial.latitude != null && <input type="hidden" name="latitude" value={initial.latitude} />}
+          {initial.longitude != null && <input type="hidden" name="longitude" value={initial.longitude} />}
+        </section>
+      )}
+
       <section className="space-y-3">
-        <h2 className="font-semibold">{P.registerTitle} · {P.japaneseFields}</h2>
-        <div><label className={label} htmlFor="nameJa">{P.propertyName}</label><input id="nameJa" name="nameJa" required defaultValue={initial.nameJa} className={field} lang="ja" /></div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className={label} htmlFor="type">{P.type}</label>
-            <select id="type" name="type" defaultValue={initial.type} className={field}>
-              {(Object.keys(typeLabel) as (keyof typeof typeLabel)[]).map((k) => <option key={k} value={k}>{typeLabel[k][locale]}</option>)}
-            </select></div>
-          <div><label className={label} htmlFor="city">{P.city}</label>
-            <select id="city" name="city" defaultValue={initial.city} className={field}>
-              {cities.map((c) => <option key={c.id} value={c.id}>{c.name[locale]}</option>)}
-            </select></div>
-        </div>
-        <div><label className={label} htmlFor="address">{P.address}</label><input id="address" name="address" required defaultValue={initial.address} className={field} lang="ja" /></div>
+        <h2 className="font-semibold">{lockRegistered ? P.japaneseFields : `${P.registerTitle} · ${P.japaneseFields}`}</h2>
+        {!lockRegistered && (
+          <>
+            <div><label className={label} htmlFor="nameJa">{P.propertyName}</label><input id="nameJa" name="nameJa" required defaultValue={initial.nameJa} className={field} lang="ja" /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className={label} htmlFor="type">{P.type}</label>
+                <select id="type" name="type" defaultValue={initial.type} className={field}>
+                  {(Object.keys(typeLabel) as (keyof typeof typeLabel)[]).map((k) => <option key={k} value={k}>{typeLabel[k][locale]}</option>)}
+                </select></div>
+              <div><label className={label} htmlFor="city">{P.city}</label>
+                <select id="city" name="city" defaultValue={initial.city} className={field}>
+                  {cities.map((c) => <option key={c.id} value={c.id}>{c.name[locale]}</option>)}
+                </select></div>
+            </div>
+            <div><label className={label} htmlFor="address">{P.address}</label><input id="address" name="address" required defaultValue={initial.address} className={field} lang="ja" /></div>
+          </>
+        )}
         <div className="grid grid-cols-2 gap-2">
           <div><label className={label} htmlFor="phone">{P.phone}</label><input id="phone" name="phone" type="tel" required defaultValue={initial.phone} className={field} /></div>
           <div><label className={label} htmlFor="licenseNumber">{P.license}</label><input id="licenseNumber" name="licenseNumber" required defaultValue={initial.licenseNumber} className={field} /></div>
@@ -78,11 +109,15 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
           <div><label className={label} htmlFor="checkInTime">{P.checkInTime}</label><input id="checkInTime" name="checkInTime" type="time" defaultValue={initial.checkInTime} className={field} /></div>
           <div><label className={label} htmlFor="checkOutTime">{P.checkOutTime}</label><input id="checkOutTime" name="checkOutTime" type="time" defaultValue={initial.checkOutTime} className={field} /></div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className={label} htmlFor="latitude">{P.latitude}</label><input id="latitude" name="latitude" type="number" step="any" defaultValue={initial.latitude ?? ""} className={field} placeholder="35.6917" /></div>
-          <div><label className={label} htmlFor="longitude">{P.longitude}</label><input id="longitude" name="longitude" type="number" step="any" defaultValue={initial.longitude ?? ""} className={field} placeholder="139.7036" /></div>
-        </div>
-        <p className="text-xs text-muted -mt-1">{P.coordsHint}</p>
+        {!lockRegistered && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className={label} htmlFor="latitude">{P.latitude}</label><input id="latitude" name="latitude" type="number" step="any" defaultValue={initial.latitude ?? ""} className={field} placeholder="35.6917" /></div>
+              <div><label className={label} htmlFor="longitude">{P.longitude}</label><input id="longitude" name="longitude" type="number" step="any" defaultValue={initial.longitude ?? ""} className={field} placeholder="139.7036" /></div>
+            </div>
+            <p className="text-xs text-muted -mt-1">{P.coordsHint}</p>
+          </>
+        )}
         <fieldset>
           <legend className={label}>{P.amenities}</legend>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
@@ -91,7 +126,15 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
             ))}
           </div>
         </fieldset>
-        <div><label className={label} htmlFor="images">{P.images}</label><textarea id="images" name="images" rows={3} defaultValue={initial.images.join("\n")} className={`${field} font-mono`} placeholder="https://…" /><p className="text-xs text-muted mt-1">{P.imagesHint}</p></div>
+        <div>
+          <p className={label}>{P.images}</p>
+          <PhotoUploader
+            hotelId={initial.hotelId}
+            initial={initial.images}
+            max={12}
+            labels={{ upload: P.uploadPhotos, uploading: P.uploading, remove: P.removePhoto, hint: P.uploadHint, linksLabel: P.photoLinks, linksHint: P.imagesHint }}
+          />
+        </div>
       </section>
 
       {showEn && (
@@ -100,7 +143,9 @@ export default function ListingForm({ locale, dict, initial, mode, action, trans
           <p className={`text-xs rounded-lg px-3 py-2 ${initial.translation === "pending" ? "bg-amber-50 text-amber-800" : "bg-paper text-muted"}`}>
             {initial.translation === "machine" ? P.translationMachine : initial.translation === "manual" ? P.translationManual : P.translationPending}
           </p>
-          <div><label className={label} htmlFor="nameEn">{P.propertyName} (EN)</label><input id="nameEn" name="nameEn" defaultValue={initial.nameEn ?? ""} className={field} /></div>
+          {lockRegistered
+            ? <input type="hidden" name="nameEn" value={initial.nameEn ?? ""} />
+            : <div><label className={label} htmlFor="nameEn">{P.propertyName.replace(/\s*[（(].*?[）)]\s*$/, "")} (EN)</label><input id="nameEn" name="nameEn" defaultValue={initial.nameEn ?? ""} className={field} /></div>}
           <div className="grid grid-cols-2 gap-2">
             <div><label className={label} htmlFor="stationEn">{P.station} (EN)</label><input id="stationEn" name="stationEn" defaultValue={initial.stationEn ?? ""} className={field} /></div>
             <div><label className={label} htmlFor="areaEn">{P.area} (EN)</label><input id="areaEn" name="areaEn" defaultValue={initial.areaEn ?? ""} className={field} /></div>

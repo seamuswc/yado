@@ -20,7 +20,7 @@ export default async function BookingsPage(props: PageProps<"/[locale]/bookings"
 
   if (!user) {
     return (
-      <div className="px-4 pt-4 space-y-4">
+      <div className="px-4 pt-4 space-y-4 md:max-w-xl md:mx-auto">
         <h1 className="text-xl font-bold">{dict.bookings.title}</h1>
         <MagicLinkForm locale={locale} dict={dict} />
       </div>
@@ -34,7 +34,7 @@ export default async function BookingsPage(props: PageProps<"/[locale]/bookings"
   const statusClass = (s: string) => s === "confirmed" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : s === "pending_payment" ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-paper text-muted border-line";
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-4 md:max-w-2xl md:mx-auto">
       <h1 className="text-xl font-bold mb-1">{dict.bookings.title}</h1>
       <p className="text-xs text-muted mb-4">{dict.auth.signedInAs} {user.email}</p>
       {user.role === "guest" && (

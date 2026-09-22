@@ -206,6 +206,24 @@ export const reviews = sqliteTable("reviews", {
   createdAt: text("created_at").notNull().default(now),
 }, (t) => [index("reviews_hotel_idx").on(t.hotelId), index("reviews_booking_idx").on(t.bookingId)]);
 
+/**
+ * A partner asking Yado to change a registered detail (name, type, city, address, map pin).
+ * Partners cannot edit those themselves; an admin applies the change on the hotel page and closes the request.
+ */
+export const changeRequests = sqliteTable("change_requests", {
+  id: text("id").primaryKey(),
+  hotelId: text("hotel_id").notNull().references(() => hotels.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  field: text("field", { enum: ["name", "type", "city", "address", "pin", "other"] }).notNull(),
+  requested: text("requested").notNull(),
+  reason: text("reason").notNull().default(""),
+  status: text("status", { enum: ["open", "done", "declined"] }).notNull().default("open"),
+  adminNote: text("admin_note").notNull().default(""),
+  createdAt: text("created_at").notNull().default(now),
+  resolvedAt: text("resolved_at"),
+}, (t) => [index("change_requests_hotel_idx").on(t.hotelId), index("change_requests_status_idx").on(t.status)]);
+
+export type ChangeRequest = typeof changeRequests.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
 export type Hotel = typeof hotels.$inferSelect;

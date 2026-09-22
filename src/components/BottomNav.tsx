@@ -12,7 +12,7 @@ export default function BottomNav({ locale, dict, bookingsHref }: { locale: Loca
     { href: bookingsHref ?? `/${locale}/bookings`, label: dict.nav.bookings, icon: "🧾", exact: false },
   ];
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-20 bg-card border-t border-line safe-bottom">
+    <nav className="fixed bottom-0 inset-x-0 z-20 bg-card border-t border-line safe-bottom md:hidden">
       <ul className="max-w-md mx-auto grid grid-cols-3">
         {items.map((it) => {
           const active = it.exact ? pathname === it.href : pathname.startsWith(it.href);

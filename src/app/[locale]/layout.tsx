@@ -56,7 +56,7 @@ export default async function LocaleLayout(props: LayoutProps<"/[locale]">) {
         <Suspense fallback={<div className="h-14 border-b border-line" />}>
           <Header locale={locale} dict={dict} user={user ? { email: user.email, role: user.role } : null} />
         </Suspense>
-        <main className="flex-1 w-full max-w-md mx-auto pb-24">
+        <main className="flex-1 w-full max-w-md md:max-w-5xl mx-auto pb-24 md:pb-8">
           {props.children}
           <footer className="px-4 pb-4 text-center">
             <p className="text-sm font-semibold">{dict.contact.title}</p>

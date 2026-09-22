@@ -27,7 +27,7 @@ export default async function BookPage(props: PageProps<"/[locale]/book">) {
   const user = await getCurrentUser();
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-4 md:max-w-2xl md:mx-auto">
       <h1 className="text-xl font-bold mb-4">{dict.book.title}</h1>
       <BookingForm
         locale={locale} dict={dict}

@@ -65,4 +65,18 @@ export const templates = {
     locale === "ja"
       ? { subject: `新規予約 ${ref} – ${hotelName}`, body: `${hotelName} に新しい予約が入りました。\n\n予約番号: ${ref}\n宿泊者: ${guest}\nチェックイン: ${checkIn}\nチェックアウト: ${checkOut}\n\nパートナーポータルで確認: ${APP_URL}/ja/partner/bookings` }
       : { subject: `New booking ${ref} – ${hotelName}`, body: `New booking for ${hotelName}.\n\nRef: ${ref}\nGuest: ${guest}\nCheck-in: ${checkIn}\nCheck-out: ${checkOut}\n\nSee it in your partner dashboard: ${APP_URL}/en/partner/bookings` },
+  changeRequestResolved: (locale: string, hotelName: string, field: string, decision: "done" | "declined", note: string, url: string) =>
+    locale === "ja"
+      ? {
+          subject: `「${hotelName}」の変更依頼（${field}）について`,
+          body: decision === "done"
+            ? `ご依頼の変更を反映しました。\n\n${note ? `メモ: ${note}\n\n` : ""}登録情報を確認: ${url}`
+            : `今回はご依頼の変更を反映できませんでした。\n\n理由: ${note || "（記載なし）"}\n\n登録情報: ${url}`,
+        }
+      : {
+          subject: `Your change request for "${hotelName}" (${field})`,
+          body: decision === "done"
+            ? `The change you asked for has been applied.\n\n${note ? `Note: ${note}\n\n` : ""}See your registered details: ${url}`
+            : `We could not apply the change you asked for.\n\nReason: ${note || "(none given)"}\n\nYour registered details: ${url}`,
+        },
 };

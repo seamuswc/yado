@@ -43,6 +43,28 @@ export async function reviewHotel(formData: FormData): Promise<void> {
   redirect(back.startsWith("/admin") && !back.includes("\\") ? back : "/admin/registrations");
 }
 
+/** Closes a partner's change request after the admin has (or has not) applied it on the hotel page. */
+export async function resolveChangeRequest(formData: FormData): Promise<void> {
+  const me = await admin();
+  const id = String(formData.get("requestId") ?? "");
+  const decision = formData.get("decision") === "declined" ? "declined" : "done";
+  const note = String(formData.get("note") ?? "").slice(0, 1000);
+  const r = db.select().from(schema.changeRequests).where(eq(schema.changeRequests.id, id)).get();
+  if (r && r.status === "open") {
+    db.update(schema.changeRequests).set({ status: decision, adminNote: note, resolvedAt: nowIso() }).where(eq(schema.changeRequests.id, id)).run();
+    const owner = db.select().from(schema.users).where(eq(schema.users.id, r.userId)).get();
+    const hotel = db.select().from(schema.hotels).where(eq(schema.hotels.id, r.hotelId)).get();
+    if (owner && hotel) {
+      const locale = owner.locale === "en" ? "en" : "ja";
+      const t = templates.changeRequestResolved(locale, hotel.nameJa, r.field, decision, note, `${APP_URL}/${locale}/partner/property`);
+      await sendEmail(owner.email, t.subject, t.body);
+    }
+    audit(me.id, `admin.change_request.${decision}`, id, note);
+  }
+  revalidatePath("/admin/changes");
+  redirect("/admin/changes");
+}
+
 export async function cancelBooking(formData: FormData): Promise<void> {
   const me = await admin();
   const id = String(formData.get("bookingId") ?? "");

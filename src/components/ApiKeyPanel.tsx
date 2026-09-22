@@ -54,6 +54,7 @@ export default function ApiKeyPanel({ audience, specUrl, keys: initialKeys, copy
       document.execCommand("copy");
     }
     setCopiedId(id);
+    setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
   }
 
   function onLabel(id: string, label: string) {
@@ -105,7 +106,8 @@ export default function ApiKeyPanel({ audience, specUrl, keys: initialKeys, copy
               {k.token ? (
                 <>
                   <input id={`api-key-${k.id}`} readOnly value={k.token} onFocus={(e) => e.target.select()} className="w-full rounded-lg bg-card border border-line px-2 py-2 font-mono text-sm" />
-                  <button type="button" onClick={() => copyToken(k.id, k.token!)} className="w-full min-h-12 rounded-xl bg-primary text-white font-semibold">{copiedId === k.id ? copy.copied : copy.copy}</button>
+                  <button type="button" onClick={() => copyToken(k.id, k.token!)} className="w-full min-h-12 rounded-xl bg-primary text-white font-semibold">{copy.copy}</button>
+                  <p aria-live="polite" className={`text-center text-xs text-muted min-h-4 transition-opacity ${copiedId === k.id ? "opacity-100" : "opacity-0"}`}>{copy.copied}</p>
                 </>
               ) : (
                 <p className="font-mono text-xs text-muted px-1">{k.prefix}…</p>

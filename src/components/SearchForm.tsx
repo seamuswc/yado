@@ -12,7 +12,9 @@ export type StayQuery = {
   minPrice: string; maxPrice: string; sort: SortKey;
 };
 
-export default function SearchForm({ locale, dict, initial, today }: { locale: Locale; dict: Dictionary; initial: StayQuery; today: string }) {
+export default function SearchForm({ locale, dict, initial, today, idPrefix = "" }: { locale: Locale; dict: Dictionary; initial: StayQuery; today: string; idPrefix?: string }) {
+  // Two copies can be on one page (phone filter sheet + desktop side column), so ids must not collide.
+  const id = (k: string) => `${idPrefix}${k}`;
   const router = useRouter();
   const [form, setForm] = useState<StayQuery>(initial);
   const set = <K extends keyof StayQuery>(k: K, v: StayQuery[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -40,7 +42,7 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
     <form onSubmit={submit} className="space-y-3">
       {(
         <div>
-          <label htmlFor="q" className={label}>{dict.search.destination}</label>
+          <label htmlFor={id("q")} className={label}>{dict.search.destination}</label>
           <div className="flex gap-2">
             <select
               value={form.city}
@@ -54,7 +56,7 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
               ))}
             </select>
             <input
-              id="q"
+              id={id("q")}
               type="search"
               value={form.q}
               onChange={(e) => set("q", e.target.value)}
@@ -67,8 +69,8 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
       )}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label htmlFor="checkIn" className={label}>{dict.search.checkIn}</label>
-          <input id="checkIn" type="date" value={form.checkIn} min={today}
+          <label htmlFor={id("checkIn")} className={label}>{dict.search.checkIn}</label>
+          <input id={id("checkIn")} type="date" value={form.checkIn} min={today}
             onChange={(e) => {
               const v = e.target.value;
               set("checkIn", v);
@@ -76,26 +78,26 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
             }} className={field} required />
         </div>
         <div>
-          <label htmlFor="checkOut" className={label}>{dict.search.checkOut}</label>
-          <input id="checkOut" type="date" value={form.checkOut} min={addDays(form.checkIn, 1)}
+          <label htmlFor={id("checkOut")} className={label}>{dict.search.checkOut}</label>
+          <input id={id("checkOut")} type="date" value={form.checkOut} min={addDays(form.checkIn, 1)}
             onChange={(e) => set("checkOut", e.target.value)} className={field} required />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label htmlFor="minPrice" className={label}>{dict.search.priceMin}</label>
-          <input id="minPrice" inputMode="numeric" value={form.minPrice}
+          <label htmlFor={id("minPrice")} className={label}>{dict.search.priceMin}</label>
+          <input id={id("minPrice")} inputMode="numeric" value={form.minPrice}
             onChange={(e) => set("minPrice", e.target.value.replace(/[^\d]/g, ""))} className={field} />
         </div>
         <div>
-          <label htmlFor="maxPrice" className={label}>{dict.search.priceMax}</label>
-          <input id="maxPrice" inputMode="numeric" value={form.maxPrice}
+          <label htmlFor={id("maxPrice")} className={label}>{dict.search.priceMax}</label>
+          <input id={id("maxPrice")} inputMode="numeric" value={form.maxPrice}
             onChange={(e) => set("maxPrice", e.target.value.replace(/[^\d]/g, ""))} className={field} />
         </div>
       </div>
       <div>
-        <label htmlFor="sort" className={label}>{dict.search.sort}</label>
-        <select id="sort" value={form.sort} onChange={(e) => set("sort", e.target.value as StayQuery["sort"])} className={field}>
+        <label htmlFor={id("sort")} className={label}>{dict.search.sort}</label>
+        <select id={id("sort")} value={form.sort} onChange={(e) => set("sort", e.target.value as StayQuery["sort"])} className={field}>
           {sortKeys.map((s) => (
             <option key={s} value={s}>{
               s === "recommended" ? dict.search.sortRecommended
@@ -110,8 +112,8 @@ export default function SearchForm({ locale, dict, initial, today }: { locale: L
       </div>
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <label htmlFor="guests" className={label}>{dict.search.guests}</label>
-          <select id="guests" value={form.guests} onChange={(e) => set("guests", Number(e.target.value))} className={field}>
+          <label htmlFor={id("guests")} className={label}>{dict.search.guests}</label>
+          <select id={id("guests")} value={form.guests} onChange={(e) => set("guests", Number(e.target.value))} className={field}>
             {Array.from({ length: MAX_GUESTS }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>{n} {n === 1 ? dict.search.guest : dict.search.guestsPlural}</option>
             ))}

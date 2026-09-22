@@ -5,6 +5,7 @@ import ListingForm from "@/components/ListingForm";
 import { toDraft } from "@/lib/listing-draft";
 import { updateListing } from "@/actions/partner";
 import { getCurrentUser } from "@/lib/auth";
+import { publicContactEmail } from "@/lib/email";
 import { getDictionary, isLocale } from "@/lib/i18n";
 import { translationAvailable } from "@/lib/translate";
 
@@ -22,10 +23,10 @@ export default async function ListingPage(props: PageProps<"/[locale]/partner/li
   const active = rooms.filter((r) => r.active);
   const P = dict.partner;
   return (
-    <div className="px-4 pt-5 space-y-4">
+    <div className="px-4 pt-5 space-y-4 md:max-w-2xl md:mx-auto">
       <h1 className="text-xl font-bold">{P.editListing}</h1>
       {active.length === 0 && <p className="text-sm text-muted">{P.fillPending}</p>}
-      <ListingForm locale={locale} dict={dict} initial={toDraft(hotel, rooms)} mode="edit" action={updateListing} translationAvailable={translationAvailable()} />
+      <ListingForm locale={locale} dict={dict} initial={toDraft(hotel, rooms)} mode="edit" action={updateListing} translationAvailable={translationAvailable()} lockRegistered contactEmail={publicContactEmail()} />
     </div>
   );
 }

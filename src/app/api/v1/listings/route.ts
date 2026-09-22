@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addListingForPartner } from "@/lib/listing-write";
-import { coerceListingBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
-import { isoInDays } from "@/lib/ids";
-import { demoPaymentsAllowed } from "@/lib/stripe";
+import { assumedDefaults, assumedNote, coerceListingBody, listingBodySchema, listingFromBody } from "@/lib/api-schemas";
 import { LISTING_NEXT, presentOwnedListing } from "@/lib/api-present";
 import { apiError, apiJson, idempotent, limit, readActor, readJson, zodError } from "@/lib/api-http";
 import { activeRoomCounts, partnerHotels } from "@/lib/partner-server";
@@ -64,17 +62,12 @@ export async function POST(req: Request) {
       return apiError(409, "listing_exists", `This owner already has a listing "${target.nameJa}" (id ${target.id}). Add the rooms, photos, and details to it with PUT /api/v1/listings/${target.id}. Name, type, city, address, and map pin were set at registration and stay as they are. Send newProperty: true only if this is a different property.`);
     }
     const created = await addListingForPartner(actor.user.id, listing);
-    let hotel = db.select().from(schema.hotels).where(and(eq(schema.hotels.id, created.hotelId), eq(schema.hotels.ownerId, actor.user.id))).get();
-    const liveNow = demoPaymentsAllowed();
-    if (liveNow && hotel) {
-      db.update(schema.hotels).set({ status: "approved", paidUntil: isoInDays(365) }).where(eq(schema.hotels.id, hotel.id)).run();
-      hotel = db.select().from(schema.hotels).where(eq(schema.hotels.id, hotel.id)).get();
-    }
+    const hotel = db.select().from(schema.hotels).where(and(eq(schema.hotels.id, created.hotelId), eq(schema.hotels.ownerId, actor.user.id))).get();
+    const assumed = assumedDefaults(data);
     return apiJson({
       listing: hotel ? presentOwnedListing(hotel) : { id: created.hotelId, slug: created.slug },
-      message: liveNow
-        ? "The listing is live and bookable. This is a test server with no Stripe key, so approval and the annual fee were skipped on purpose. On the production server a new listing stays pending until an admin approves it and the fee is paid."
-        : LISTING_NEXT,
+      assumed,
+      message: LISTING_NEXT + assumedNote(assumed),
     }, 201);
   });
 }

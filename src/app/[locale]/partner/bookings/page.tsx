@@ -13,7 +13,7 @@ export default async function PartnerBookings(props: PageProps<"/[locale]/partne
   if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
   const bookings = bookingsForHotels(partnerHotels(user.id).map((h) => h.id));
   return (
-    <div className="px-4 pt-5 space-y-4">
+    <div className="px-4 pt-5 space-y-4 md:max-w-2xl md:mx-auto">
       <PartnerTabs locale={locale} dict={dict} current="bookings" />
       <h1 className="text-xl font-bold">{dict.partner.bookings}</h1>
       {bookings.length === 0 ? <p className="text-muted text-sm">{dict.partner.noBookings}</p> : (

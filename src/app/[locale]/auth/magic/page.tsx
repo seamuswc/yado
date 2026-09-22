@@ -8,7 +8,7 @@ export default async function MagicPage(props: PageProps<"/[locale]/auth/magic">
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   return (
-    <div className="px-4 py-16 text-center">
+    <div className="px-4 py-16 text-center md:max-w-xl md:mx-auto">
       <p className="text-4xl mb-3">🔗</p>
       <p className="mb-4">{dict.auth.invalidLink}</p>
       <Link href={`/${locale}/login`} className="text-primary underline">{dict.auth.signIn}</Link>
