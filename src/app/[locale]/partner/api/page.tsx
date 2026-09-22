@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import ApiKeyPanel from "@/components/ApiKeyPanel";
 import PartnerTabs from "@/components/PartnerTabs";
+import PromptExample from "@/components/PromptExample";
 import { listOwnedApiKeys } from "@/lib/api-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_URL } from "@/lib/email";
@@ -12,14 +13,24 @@ export default async function PartnerApiPage(props: PageProps<"/[locale]/partner
   const dict = getDictionary(locale);
   const user = await getCurrentUser();
   if (!user || user.role !== "partner") redirect(`/${locale}/partner/login`);
+  const keys = listOwnedApiKeys(user.id).filter((k) => !k.revokedAt).map((k) => ({ id: k.id, token: k.token, prefix: k.prefix, label: k.label }));
+  const firstKey = keys.find((k) => k.token)?.token ?? null;
+  const promptText = dict.prompt.hotelText.replace("{api}", `${APP_URL}/api/v1`).replace("{key}", firstKey ?? "yado_…");
   return (
     <div className="px-4 pt-5 space-y-4">
       <PartnerTabs locale={locale} dict={dict} current="api" />
       <ApiKeyPanel
         audience="partner"
         specUrl={`${APP_URL}/api/v1/openapi.json`}
-        keys={listOwnedApiKeys(user.id).filter((k) => !k.revokedAt).map((k) => ({ id: k.id, token: k.token, prefix: k.prefix, label: k.label }))}
+        keys={keys}
         copy={dict.api}
+      />
+      <PromptExample
+        title={dict.prompt.hotelTitle}
+        intro={firstKey ? dict.prompt.hotelIntro : `${dict.prompt.noKey} ${dict.prompt.hotelIntro}`}
+        text={promptText}
+        copy={dict.prompt.copy}
+        copied={dict.prompt.copied}
       />
     </div>
   );

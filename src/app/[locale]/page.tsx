@@ -3,10 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import SearchForm from "@/components/SearchForm";
 import HotelCard from "@/components/HotelCard";
+import PromptExample from "@/components/PromptExample";
 import { getDictionary, isLocale } from "@/lib/i18n";
 import { cities, listLiveHotels, t } from "@/lib/hotels";
 import { readStay, stayQuery } from "@/lib/stay";
 import { todayIso } from "@/lib/dates";
+import { APP_URL } from "@/lib/email";
 import { stripeConfigured } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,10 @@ export default async function Home(props: PageProps<"/[locale]">) {
   const featured = [...hotels].sort((a, b) => b.rating * b.reviewCount - a.rating * a.reviewCount).slice(0, 3);
   const q = stayQuery(stay);
   const activeCities = cities.filter((c) => c.id !== "other" && hotels.some((h) => h.city === c.id));
+  const guestPrompt = dict.prompt.guestText
+    .replace("{api}", `${APP_URL}/api/v1`)
+    .replace("{checkIn}", stay.checkIn)
+    .replace("{checkOut}", stay.checkOut);
 
   return (
     <div>
@@ -54,6 +60,16 @@ export default async function Home(props: PageProps<"/[locale]">) {
             <HotelCard key={h.id} hotel={h} locale={locale} dict={dict} query={q} />
           ))}
         </div>
+      </section>
+
+      <section className="px-4 pb-6">
+        <PromptExample
+          title={dict.prompt.guestTitle}
+          intro={dict.prompt.guestIntro}
+          text={guestPrompt}
+          copy={dict.prompt.copy}
+          copied={dict.prompt.copied}
+        />
       </section>
 
       <section className="px-4 pb-6">
