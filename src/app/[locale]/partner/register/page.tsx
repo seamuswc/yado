@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import ListingForm from "@/components/ListingForm";
-import { emptyListing } from "@/lib/listing-draft";
+import RegisterForm from "@/components/RegisterForm";
 import { registerPartner } from "@/actions/partner";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary, isLocale } from "@/lib/i18n";
-import { translationAvailable } from "@/lib/translate";
 
 export default async function RegisterPage(props: PageProps<"/[locale]/partner/register">) {
   const { locale } = await props.params;
@@ -22,7 +20,7 @@ export default async function RegisterPage(props: PageProps<"/[locale]/partner/r
           <li key={s} className="flex gap-2"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">{i + 1}</span>{s}</li>
         ))}
       </ol>
-      <ListingForm locale={locale} dict={dict} initial={emptyListing()} mode="register" action={registerPartner} translationAvailable={translationAvailable()} />
+      <RegisterForm locale={locale} dict={dict} action={registerPartner} />
       <p className="text-sm text-center text-muted mt-6"><Link href={`/${locale}/partner/login`} className="text-primary underline">{dict.partner.signInHere}</Link></p>
     </div>
   );

@@ -2,18 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { db, schema } from "@/db";
 import { getCurrentUser, clientIp, rateLimit } from "@/lib/auth";
-import { BookingError, cancelPendingBooking, createBooking, expireStaleBookings } from "@/lib/booking-server";
-import { onBookingConfirmed } from "@/lib/payments";
 import { rememberBookingRef } from "@/lib/booking-access";
-import { APP_URL } from "@/lib/email";
-import { getDictionary, isLocale, nightsBetween, type Locale } from "@/lib/i18n";
-import { getLiveHotel } from "@/lib/hotels";
-import { getStripe } from "@/lib/stripe";
-import { track } from "@/lib/analytics";
-import { addDays, todayIso } from "@/lib/dates";
+import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
+import { startGuestBooking } from "@/lib/start-booking";
+import { addDays } from "@/lib/dates";
 import type { ActionState } from "./auth";
 
 const schemaIn = z.object({
@@ -45,67 +38,20 @@ export async function startBooking(_prev: ActionState, formData: FormData): Prom
   const ip = await clientIp();
   if (!rateLimit(`book:${ip}`, 20, 10 * 60_000)) return { error: d.auth.rateLimited };
 
-  const hotel = getLiveHotel(v.hotel);
-  const room = hotel?.rooms.find((r) => r.id === v.room);
-  if (!hotel || !room) return { error: d.common.error };
-  if (nightsBetween(v.checkIn, v.checkOut) < 1 || v.checkIn < todayIso()) return { error: d.book.errors.invalidDates };
-
-  expireStaleBookings();
   const user = await getCurrentUser();
-  const stripe = getStripe();
   // A signed-in guest always books under their verified email.
   const email = user?.role === "guest" ? user.email : v.email;
-  let booking;
-  try {
-    booking = createBooking({
-      hotelId: hotel.dbId, roomId: room.id, userId: user?.id ?? null,
-      checkIn: v.checkIn, checkOut: v.checkOut, guests: v.guests,
-      firstName: v.firstName, lastName: v.lastName, email, phone: v.phone, requests: v.requests,
-      locale, paymentMode: stripe ? "stripe" : "demo",
-    });
-  } catch (e) {
-    if (e instanceof BookingError) return { error: d.book.errors[e.code] };
-    console.error("createBooking failed", e);
-    return { error: d.common.error };
+  const result = await startGuestBooking({
+    locale, hotelSlug: v.hotel, roomId: v.room, checkIn: v.checkIn, checkOut: v.checkOut, guests: v.guests,
+    firstName: v.firstName, lastName: v.lastName, email, phone: v.phone, requests: v.requests,
+    userId: user?.id ?? null, via: "site",
+  });
+  if (!result.ok) {
+    if (result.error === "notFound" || result.error === "stripe" || result.error === "stripe_not_configured") return { error: d.common.error };
+    return { error: d.book.errors[result.error] };
   }
-  track("booking_started", { locale, meta: { hotel: hotel.id, total: booking.total } });
-  await rememberBookingRef(booking.ref);
-
-  if (!stripe) {
-    await onBookingConfirmed(booking.id);
-    redirect(`/${locale}/confirmation?ref=${booking.ref}`);
-  }
-
-  let session;
-  try {
-    session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"], // async methods (konbini, bank transfer) would need async_payment_* handling
-    customer_email: email,
-    locale: locale === "ja" ? "ja" : "en",
-    line_items: [{
-      quantity: 1,
-      price_data: {
-        currency: "jpy",
-        unit_amount: booking.total,
-        product_data: {
-          name: `${hotel.name[locale]} – ${room.name[locale]}`,
-          description: `${v.checkIn} → ${v.checkOut}, ${booking.nights} ${locale === "ja" ? "泊" : "night(s)"}, ${v.guests} ${locale === "ja" ? "名" : "guest(s)"}`,
-        },
-      },
-    }],
-    metadata: { bookingId: booking.id, ref: booking.ref },
-    success_url: `${APP_URL}/${locale}/confirmation?ref=${booking.ref}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${APP_URL}/${locale}/hotels/${hotel.id}?checkIn=${v.checkIn}&checkOut=${v.checkOut}&guests=${v.guests}`,
-    expires_at: Math.floor(Date.now() / 1000) + 35 * 60, // Stripe minimum is 30 min, measured server-side
-    });
-  } catch (e) {
-    // Don't leave a pending booking holding inventory when Stripe is unreachable.
-    cancelPendingBooking(booking.id);
-    console.error("Stripe checkout session failed", e);
-    return { error: d.common.error };
-  }
-  db.update(schema.bookings).set({ stripeSessionId: session.id }).where(eq(schema.bookings.id, booking.id)).run();
-  redirect(session.url!);
+  await rememberBookingRef(result.booking.ref);
+  if (result.paymentUrl) redirect(result.paymentUrl);
+  redirect(`/${locale}/confirmation?ref=${result.booking.ref}&token=${encodeURIComponent(result.viewToken)}`);
 }
 

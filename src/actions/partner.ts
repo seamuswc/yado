@@ -5,15 +5,17 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { audit, clientIp, consumeToken, createSession, createUser, findUserByEmail, getCurrentUser, issueToken, rateLimit, requireRole } from "@/lib/auth";
+import { audit, clientIp, consumeToken, createSession, findUserByEmail, getCurrentUser, issueToken, rateLimit, requireRole } from "@/lib/auth";
 import { APP_URL, sendEmail, templates } from "@/lib/email";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
-import { amenityKeys, cities } from "@/lib/hotels";
-import { newId, nowIso, slugify } from "@/lib/ids";
+import { cities } from "@/lib/hotels";
+import { nowIso } from "@/lib/ids";
 import { getStripe, PARTNER_ANNUAL_FEE } from "@/lib/stripe";
 import { applyFeePayment, subscriptionPeriodEnd } from "@/lib/payments";
 import { isLive } from "@/lib/hotels";
-import { translateListing } from "@/lib/translate";
+import { draftProperty } from "@/lib/draft-listing";
+import { ListingError, registerPartnerWithListing, savePartnerListing, type NormalizedListing } from "@/lib/listing-write";
+import { MapsLinkError, resolveMapsLink } from "@/lib/maps-link";
 import type { ActionState } from "./auth";
 
 function loc(v: unknown): Locale { return typeof v === "string" && isLocale(v) ? v : "ja"; }
@@ -75,6 +77,16 @@ function parseImages(raw: string): string[] {
   return raw.split(/\r?\n/).map((s) => s.trim()).filter((s) => /^https:\/\/\S+$/.test(s)).slice(0, 12);
 }
 
+function normalizedFromForm(L: z.infer<typeof listingSchema>): NormalizedListing {
+  return {
+    ...L,
+    images: parseImages(L.images),
+    latitude: L.latitude ?? null,
+    longitude: L.longitude ?? null,
+    rooms: L.rooms.map((r) => ({ ...r, sizeSqm: r.sizeSqm ?? null })),
+  };
+}
+
 // ---------- registration ----------
 
 const registerSchema = z.object({
@@ -100,59 +112,67 @@ export async function registerPartner(_prev: ActionState, formData: FormData): P
     if (f === "agree") return { error: d.book.mustAgree };
     return { error: d.book.required };
   }
-  const listing = parseListing(formData);
-  if (!listing.success) {
-    const issue = listing.error.issues[0];
-    return { error: `${d.book.required}: ${issue.path.join(".")}` };
-  }
+  const short = z.object({
+    nameJa: z.string().trim().min(1).max(120),
+    type: z.enum(["hotel", "ryokan", "business", "hostel"]),
+    city: z.string().refine((c) => cities.some((x) => x.id === c)),
+    address: z.string().trim().min(3).max(300),
+    mapsUrl: z.string().trim().min(8).max(2000),
+  }).safeParse(Object.fromEntries(formData));
+  if (!short.success) return { error: d.book.required };
   if (findUserByEmail(acct.data.email)) return { error: d.partner.alreadyRegistered };
-  const L = listing.data;
-
-  // Auto-translate Japanese → English for the public toggle (network call happens before any DB write).
-  const tr = await translateListing({
-    name: L.nameJa, area: L.areaJa, description: L.descriptionJa, access: L.accessJa,
-    rooms: L.rooms.map((r) => ({ name: r.nameJa, description: r.descriptionJa })),
-  });
-  const stationEn = L.stationJa ? (tr.machine ? await translateShort(L.stationJa) : L.stationJa) : "";
-
-  const hotelId = newId("h_");
-  // User + hotel + rooms are written atomically so a failure can't leave an account without a property.
-  const user = db.transaction(() => {
-  if (findUserByEmail(acct.data.email)) throw new Error("exists");
-  const user = createUser({ email: acct.data.email, name: acct.data.contactName, role: "partner", password: acct.data.password, locale });
-  let slug = slugify(tr.en.name || L.nameJa);
-  if (db.select({ id: schema.hotels.id }).from(schema.hotels).where(eq(schema.hotels.slug, slug)).get()) slug = `${slug}-${hotelId.slice(2, 8).toLowerCase()}`;
-  db.insert(schema.hotels).values({
-    id: hotelId, slug, ownerId: user.id,
-    nameJa: L.nameJa, nameEn: tr.en.name, city: L.city, areaJa: L.areaJa, areaEn: tr.en.area, type: L.type,
-    descriptionJa: L.descriptionJa, descriptionEn: tr.en.description, accessJa: L.accessJa, accessEn: tr.en.access,
-    stationJa: L.stationJa, stationEn, latitude: L.latitude ?? null, longitude: L.longitude ?? null,
-    amenities: L.amenities.filter((a) => (amenityKeys as string[]).includes(a)), images: parseImages(L.images),
-    checkInTime: L.checkInTime, checkOutTime: L.checkOutTime,
-    legalName: L.nameJa, address: L.address, phone: L.phone, licenseNumber: L.licenseNumber,
-    translation: tr.machine ? "machine" : "pending", status: "pending",
-  }).run();
-  L.rooms.forEach((r, i) => {
-    db.insert(schema.rooms).values({
-      id: newId("r_"), hotelId, nameJa: r.nameJa, nameEn: tr.en.rooms[i]?.name ?? r.nameJa,
-      descriptionJa: r.descriptionJa, descriptionEn: tr.en.rooms[i]?.description ?? r.descriptionJa,
-      sleeps: r.sleeps, sizeSqm: r.sizeSqm ?? null, pricePerNight: r.pricePerNight, quantity: r.quantity,
-      breakfast: r.breakfast, refundable: r.refundable, sortOrder: i,
-    }).run();
-  });
-  return user;
-  });
+  let pin: { latitude: number | null; longitude: number | null };
+  try {
+    pin = await resolveMapsLink(short.data.mapsUrl);
+  } catch (e) {
+    if (e instanceof MapsLinkError) return { error: d.partner.mapsInvalid };
+    throw e;
+  }
+  const basics = { name: short.data.nameJa, type: short.data.type, city: short.data.city, address: short.data.address };
+  const drafted = await draftProperty(basics);
+  const listing: NormalizedListing = {
+    nameJa: short.data.nameJa,
+    type: short.data.type,
+    city: short.data.city,
+    address: short.data.address,
+    phone: "",
+    licenseNumber: "",
+    stationJa: drafted.stationJa,
+    areaJa: drafted.areaJa,
+    descriptionJa: drafted.descriptionJa,
+    accessJa: drafted.accessJa,
+    checkInTime: drafted.checkInTime,
+    checkOutTime: drafted.checkOutTime,
+    amenities: drafted.amenities,
+    images: [],
+    latitude: pin.latitude,
+    longitude: pin.longitude,
+    nameEn: drafted.nameEn,
+    areaEn: drafted.areaEn,
+    descriptionEn: drafted.descriptionEn,
+    accessEn: drafted.accessEn,
+    stationEn: drafted.stationEn,
+    rooms: drafted.rooms,
+  };
+  let created;
+  try {
+    created = await registerPartnerWithListing({
+      contactName: acct.data.contactName,
+      email: acct.data.email,
+      password: acct.data.password,
+      locale,
+      listing,
+    });
+  } catch (e) {
+    if (e instanceof ListingError) return { error: d.partner.alreadyRegistered };
+    throw e;
+  }
+  const user = created.user;
 
   const token = issueToken(user.id, "verify_email", 24);
   const t = templates.verifyPartner(locale, `${APP_URL}/api/auth/verify?token=${token}&locale=${locale}`);
   await sendEmail(user.email, t.subject, t.body);
-  audit(user.id, "partner.registered", hotelId, tr.machine ? "translated" : `translation skipped: ${tr.error ?? ""}`);
   return { ok: true, message: d.partner.registeredBody.replace("{email}", user.email) };
-}
-
-async function translateShort(ja: string): Promise<string> {
-  const r = await translateListing({ name: ja, area: "", description: "", access: "", rooms: [] });
-  return r.en.name || ja;
 }
 
 export async function verifyPartnerEmail(token: string): Promise<boolean> {
@@ -196,48 +216,8 @@ export async function updateListing(_prev: ActionState, formData: FormData): Pro
   const extraParsed = editSchema.pick({ nameEn: true, areaEn: true, descriptionEn: true, accessEn: true, stationEn: true }).safeParse(Object.fromEntries(formData));
   if (!extraParsed.success) return { error: `${d.book.required}: ${extraParsed.error.issues[0].path.join(".")}` };
   const extra = extraParsed.data;
-  const L = base.data;
   const retranslate = formData.get("retranslate") === "1";
-
-  let en = { name: extra.nameEn, area: extra.areaEn, description: extra.descriptionEn, access: extra.accessEn, station: extra.stationEn };
-  let roomsEn = L.rooms.map((r) => ({ name: r.nameEn ?? "", description: r.descriptionEn ?? "" }));
-  // English copy that still equals the Japanese text is not a translation; keep it flagged for the admin.
-  const englishChanged = en.name !== hotel.nameEn || en.description !== hotel.descriptionEn || en.area !== hotel.areaEn || en.access !== hotel.accessEn;
-  const looksUntranslated = !en.name || en.name === L.nameJa || !en.description || en.description === L.descriptionJa;
-  let translation: schema.Hotel["translation"] = looksUntranslated ? "pending" : englishChanged ? "manual" : hotel.translation;
-  if (retranslate) {
-    const tr = await translateListing({ name: L.nameJa, area: L.areaJa, description: L.descriptionJa, access: L.accessJa, rooms: L.rooms.map((r) => ({ name: r.nameJa, description: r.descriptionJa })) });
-    en = { ...tr.en, station: L.stationJa ? await translateShort(L.stationJa) : "" };
-    roomsEn = tr.en.rooms;
-    translation = tr.machine ? "machine" : "pending";
-  }
-
-  // Edits to a live listing keep it live; edits to a rejected one put it back in the queue.
-  const status = hotel.status === "rejected" ? "pending" : hotel.status;
-  db.update(schema.hotels).set({
-    nameJa: L.nameJa, nameEn: en.name || L.nameJa, type: L.type, city: L.city, areaJa: L.areaJa, areaEn: en.area,
-    descriptionJa: L.descriptionJa, descriptionEn: en.description || L.descriptionJa, accessJa: L.accessJa, accessEn: en.access,
-    stationJa: L.stationJa, stationEn: en.station, latitude: L.latitude ?? null, longitude: L.longitude ?? null,
-    amenities: L.amenities.filter((a) => (amenityKeys as string[]).includes(a)), images: parseImages(L.images),
-    checkInTime: L.checkInTime, checkOutTime: L.checkOutTime, address: L.address, phone: L.phone, licenseNumber: L.licenseNumber,
-    translation, status,
-  }).where(eq(schema.hotels.id, hotel.id)).run();
-
-  // Rooms: update existing by id, insert new, deactivate removed (bookings reference them).
-  const existing = db.select().from(schema.rooms).where(eq(schema.rooms.hotelId, hotel.id)).all();
-  const keep = new Set<string>();
-  L.rooms.forEach((r, i) => {
-    const values = {
-      nameJa: r.nameJa, nameEn: roomsEn[i]?.name || r.nameJa, descriptionJa: r.descriptionJa, descriptionEn: roomsEn[i]?.description || r.descriptionJa,
-      sleeps: r.sleeps, sizeSqm: r.sizeSqm ?? null, pricePerNight: r.pricePerNight, quantity: r.quantity, breakfast: r.breakfast, refundable: r.refundable, sortOrder: i, active: true,
-    };
-    const ex = r.id ? existing.find((x) => x.id === r.id) : undefined;
-    if (ex) { db.update(schema.rooms).set(values).where(eq(schema.rooms.id, ex.id)).run(); keep.add(ex.id); }
-    else { const id = newId("r_"); db.insert(schema.rooms).values({ id, hotelId: hotel.id, ...values }).run(); keep.add(id); }
-  });
-  for (const ex of existing) if (!keep.has(ex.id)) db.update(schema.rooms).set({ active: false }).where(eq(schema.rooms.id, ex.id)).run();
-
-  audit(user.id, "partner.listing_updated", hotel.id, retranslate ? "retranslated" : "");
+  await savePartnerListing(hotel, normalizedFromForm(base.data), extra, { retranslate, fillEnglish: false }, user.id);
   revalidatePath(`/${locale}/partner`);
   return { ok: true, message: d.partner.saved };
 }

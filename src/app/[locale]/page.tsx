@@ -67,12 +67,6 @@ export default async function Home(props: PageProps<"/[locale]">) {
         </ul>
       </section>
 
-      <section className="px-4 pb-6">
-        <Link href={`/${locale}/partner/register`} className="block rounded-2xl border border-dashed border-primary/40 bg-primary-soft/40 p-4 text-center">
-          <p className="font-semibold text-primary-dark">🏨 {dict.partner.listYourProperty}</p>
-          <p className="text-xs text-muted mt-1">{dict.partner.steps.join(" → ")}</p>
-        </Link>
-      </section>
       <p className="px-4 pb-4 text-xs text-muted text-center">{dict.footer}</p>
     </div>
   );

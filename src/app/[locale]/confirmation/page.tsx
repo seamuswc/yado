@@ -20,7 +20,7 @@ export default async function ConfirmationPage(props: PageProps<"/[locale]/confi
     booking = getBookingByRef(ref);
   }
   const user = await getCurrentUser();
-  if (booking && !(await canViewBooking(booking, one("session_id")))) booking = undefined;
+  if (booking && !(await canViewBooking(booking, one("session_id"), one("token")))) booking = undefined;
 
   if (!booking) {
     return (

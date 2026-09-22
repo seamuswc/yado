@@ -8,6 +8,7 @@ import { startFeeCheckout } from "@/actions/partner";
 import { reconcileFeeSession } from "@/lib/payments";
 import { PARTNER_ANNUAL_FEE, stripeConfigured } from "@/lib/stripe";
 import SubmitButton from "@/components/SubmitButton";
+import PartnerTabs from "@/components/PartnerTabs";
 
 export default async function PartnerDashboard(props: PageProps<"/[locale]/partner">) {
   const { locale } = await props.params;
@@ -31,6 +32,8 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
         <h1 className="text-xl font-bold">{P.dashboard}</h1>
         <p className="text-xs text-muted">{dict.auth.signedInAs} {user.email}</p>
       </div>
+
+      <PartnerTabs locale={locale} dict={dict} current="dashboard" />
 
       {hotels.length === 0 && (
         <div className="rounded-2xl bg-card border border-line p-6 text-center">
@@ -85,7 +88,7 @@ export default async function PartnerDashboard(props: PageProps<"/[locale]/partn
           <ul className="space-y-2">
             {recent.map((b) => (
               <li key={b.id} className="rounded-xl bg-card border border-line px-3 py-2 text-sm flex justify-between gap-2">
-                <span><span className="font-mono text-xs text-muted">{b.ref}</span> · {b.lastName} {b.firstName}<br /><span className="text-muted">{formatDate(b.checkIn, locale)} → {formatDate(b.checkOut, locale)}</span></span>
+                <span><span className="font-mono text-xs text-muted">{b.ref}</span><br /><span className="text-muted">{formatDate(b.checkIn, locale)} → {formatDate(b.checkOut, locale)}</span></span>
                 <span className="text-right font-semibold">{formatPrice(b.total, locale)}<br /><span className="text-xs font-normal text-muted">{dict.bookings[b.status === "pending_payment" ? "pending" : b.status]}</span></span>
               </li>
             ))}

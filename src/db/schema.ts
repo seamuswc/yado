@@ -115,6 +115,7 @@ export const bookings = sqliteTable("bookings", {
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   paidAt: text("paid_at"),
   cancelledAt: text("cancelled_at"),
+  viewTokenHash: text("view_token_hash"), // sha256 of the secret that opens the confirmation page
   createdAt: text("created_at").notNull().default(now),
 }, (t) => [
   index("bookings_hotel_idx").on(t.hotelId),
@@ -156,6 +157,26 @@ export const emails = sqliteTable("emails", {
   body: text("body").notNull(),
   provider: text("provider").notNull().default("console"),
   status: text("status").notNull().default("logged"),
+  createdAt: text("created_at").notNull().default(now),
+});
+
+/** Bearer keys for ChatGPT, Grok, and other assistants. The secret is stored only as a hash. */
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  label: text("label").notNull().default(""),
+  prefix: text("prefix").notNull().default(""),
+  createdAt: text("created_at").notNull().default(now),
+  lastUsedAt: text("last_used_at"),
+  revokedAt: text("revoked_at"),
+}, (t) => [index("api_keys_user_idx").on(t.userId)]);
+
+/** Successful API writes, so a retried assistant call does not book or list twice. */
+export const idempotencyKeys = sqliteTable("idempotency_keys", {
+  id: text("id").primaryKey(),
+  status: integer("status").notNull(),
+  body: text("body").notNull(),
   createdAt: text("created_at").notNull().default(now),
 });
 

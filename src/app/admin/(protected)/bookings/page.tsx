@@ -11,12 +11,12 @@ export default async function BookingsPage() {
   return (
     <div>
       <PageTitle sub={`${rows.length} most recent · confirmed revenue shown: ${yen(total)}`}>Bookings</PageTitle>
-      <Table head={["Ref", "Property", "Guest", "Stay", "Total", "Payment", "Status", "Created", ""]}>
+      <Table head={["Ref", "Property", "Contact", "Stay", "Total", "Payment", "Status", "Created", ""]}>
         {rows.map((b) => (
           <tr key={b.id} className="hover:bg-paper">
             <td className="px-3 py-2 font-mono text-xs">{b.ref}</td>
             <td className="px-3 py-2"><HotelLink id={b.hotelId} name={b.hotel.nameJa} /><div className="text-xs text-muted">{b.room?.nameJa}</div></td>
-            <td className="px-3 py-2">{b.lastName} {b.firstName}<div className="text-xs text-muted">{b.email}</div></td>
+            <td className="px-3 py-2">{b.email}<div className="text-xs text-muted">{b.phone}</div></td>
             <td className="px-3 py-2 text-xs">{b.checkIn} → {b.checkOut}<br />{b.nights}n · {b.guests}p</td>
             <td className="px-3 py-2 font-medium">{yen(b.total)}</td>
             <td className="px-3 py-2"><Badge tone={b.paymentMode === "stripe" ? "info" : "muted"}>{b.paymentMode}</Badge></td>

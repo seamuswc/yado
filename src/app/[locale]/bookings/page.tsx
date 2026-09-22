@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import MagicLinkForm from "@/components/MagicLinkForm";
 import ReviewForm from "@/components/ReviewForm";
 import { getCurrentUser } from "@/lib/auth";
@@ -8,6 +8,9 @@ import { bookingsForGuest } from "@/lib/booking-server";
 import { reviewableBookings } from "@/lib/reviews";
 import { formatDate, formatPrice, getDictionary, isLocale } from "@/lib/i18n";
 import { imgOpts } from "@/lib/images";
+import ApiKeyPanel from "@/components/ApiKeyPanel";
+import { listApiKeys } from "@/lib/api-auth";
+import { APP_URL } from "@/lib/email";
 
 export default async function BookingsPage(props: PageProps<"/[locale]/bookings">) {
   const { locale } = await props.params;
@@ -23,14 +26,7 @@ export default async function BookingsPage(props: PageProps<"/[locale]/bookings"
       </div>
     );
   }
-  if (user.role === "partner") {
-    return (
-      <div className="px-4 pt-4">
-        <h1 className="text-xl font-bold mb-3">{dict.partner.portal}</h1>
-        <Link href={`/${locale}/partner`} className="text-primary underline">{dict.partner.dashboard} →</Link>
-      </div>
-    );
-  }
+  if (user.role === "partner") redirect(`/${locale}/partner/bookings`);
 
   const bookings = bookingsForGuest(user.id, user.email);
   const reviewable = reviewableBookings(user.id, user.email);
@@ -41,6 +37,16 @@ export default async function BookingsPage(props: PageProps<"/[locale]/bookings"
     <div className="px-4 pt-4">
       <h1 className="text-xl font-bold mb-1">{dict.bookings.title}</h1>
       <p className="text-xs text-muted mb-4">{dict.auth.signedInAs} {user.email}</p>
+      {user.role === "guest" && (
+        <div className="mb-5">
+          <ApiKeyPanel
+            audience="guest"
+            specUrl={`${APP_URL}/api/v1/openapi.json`}
+            keys={listApiKeys(user.id).filter((k) => !k.revokedAt).map((k) => ({ id: k.id, prefix: k.prefix, label: k.label }))}
+            copy={dict.api}
+          />
+        </div>
+      )}
 
       {reviewable.length > 0 && (
         <section className="mb-5 space-y-2">

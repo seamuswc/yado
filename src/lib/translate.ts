@@ -38,6 +38,10 @@ function getClient(): Anthropic | null {
 
 export const translationAvailable = () => getClient() !== null;
 
+export function anthropic(): Anthropic | null {
+  return getClient();
+}
+
 export async function translateListing(ja: ListingTextJa): Promise<{ en: ListingTextEn; machine: boolean; error?: string }> {
   const fallback: ListingTextEn = { ...ja, rooms: ja.rooms.map((r) => ({ ...r })) };
   const c = getClient();

@@ -26,6 +26,7 @@ Everything works with no external services configured ("demo mode"): payments ar
 | Partner portal | `/[locale]/partner/register`, `/login`, `/reset`, `/partner`, `/partner/listing`, `/partner/bookings` | Register in Japanese → confirm email → admin review → pay annual fee → live. English copy is auto-translated |
 | Admin | `/admin` | Weekly dashboard + server capacity, registrations queue, hotels, bookings (cancel/refund), reviews (hide), users (disable), email outbox, audit log |
 | Payments | Stripe Checkout | Guests: one-off payment in JPY. Partners: yearly subscription. Webhook: `/api/stripe/webhook` |
+| Assistant API | `/api/v1` | ChatGPT, Grok, or any HTTPS client can search and book (no key). Partners create listings with a Bearer key. OpenAPI: `/api/v1/openapi.json` |
 
 ### Flow: hotel registration
 1. Partner fills the form in Japanese at `/ja/partner/register` (account + property + rooms; licence number required).
@@ -40,6 +41,15 @@ Everything works with no external services configured ("demo mode"): payments ar
 3. `checkout.session.completed` webhook (or the confirmation page's fallback check) marks it `confirmed`, emails guest and hotel.
 4. Unpaid bookings older than 2 hours are cancelled automatically so the room frees up.
 5. After check-out the guest can post one review per booking from `/bookings`.
+
+### Assistants (ChatGPT, Grok)
+
+`GET /api/v1` describes the API. `GET /api/v1/openapi.json` is an OpenAPI 3.0 spec.
+
+- **Guests:** import the spec as a ChatGPT action or a Grok tool. "Book me a room on these dates for this budget near this place" is `GET /api/v1/hotels?near=…&checkIn=…&checkOut=…&maxTotal=…`, then `POST /api/v1/bookings`. No guest key. Payment is Stripe Checkout: the assistant must not ask for the card number. The guest opens `paymentUrl` and enters the card there. The stay stays unpaid until Stripe confirms it. This path does not run in demo mode.
+- **Hotels:** create an API key on the partner dashboard and paste it into the chatbot as a Bearer token. "Make a listing with these photos, for this price, at this location" is `POST /api/v1/listings` with that key. Photos are `https` URLs, price is yen per night, location is `city` plus `address`.
+
+Listings stay hidden until admin approval and the annual fee, same as the website. Send an `Idempotency-Key` on writes so a retried assistant call does not book or list twice.
 
 ## Configuration (`.env.local`)
 

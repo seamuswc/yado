@@ -55,7 +55,7 @@ export default async function LocaleLayout(props: LayoutProps<"/[locale]">) {
           <Header locale={locale} dict={dict} user={user ? { email: user.email, role: user.role } : null} />
         </Suspense>
         <main className="flex-1 w-full max-w-md mx-auto pb-24">{props.children}</main>
-        <BottomNav locale={locale} dict={dict} />
+        <BottomNav locale={locale} dict={dict} bookingsHref={user?.role === "partner" ? `/${locale}/partner/bookings` : undefined} />
       </body>
     </html>
   );

@@ -13,12 +13,13 @@ import { track } from "./analytics";
 // ---------- guest bookings ----------
 
 /** Side effects for a booking that has just become confirmed: emails to guest and hotel, analytics. */
-export async function onBookingConfirmed(bookingId: string): Promise<void> {
+export async function onBookingConfirmed(bookingId: string, viewToken?: string): Promise<void> {
   const b = getBookingById(bookingId);
   if (!b || b.status !== "confirmed") return;
   const locale: Locale = isLocale(b.locale) ? b.locale : "en";
   const hotelName = locale === "ja" ? b.hotel.nameJa : b.hotel.nameEn;
-  const url = `${APP_URL}/${locale}/confirmation?ref=${b.ref}`;
+  const tokenQs = viewToken ? `&token=${encodeURIComponent(viewToken)}` : "";
+  const url = `${APP_URL}/${locale}/confirmation?ref=${encodeURIComponent(b.ref)}${tokenQs}`;
   const t = templates.bookingConfirmed(locale, b.ref, hotelName, formatDate(b.checkIn, locale), formatDate(b.checkOut, locale), url);
   await sendEmail(b.email, t.subject, t.body);
   const owner = b.hotel.ownerId ? db.select().from(schema.users).where(eq(schema.users.id, b.hotel.ownerId)).get() : null;
